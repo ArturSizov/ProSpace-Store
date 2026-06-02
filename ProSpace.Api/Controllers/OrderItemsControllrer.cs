@@ -4,7 +4,7 @@ using ProSpace.Api.Contracts.Request;
 using ProSpace.Api.Contracts.Response;
 using ProSpace.Domain.Interfaces.Services;
 using ProSpace.Domain.Models;
-using ProSpace.Domain.Services;
+using ProSpace.Application.Services;
 
 namespace ProSpace.Api.Controllers
 {

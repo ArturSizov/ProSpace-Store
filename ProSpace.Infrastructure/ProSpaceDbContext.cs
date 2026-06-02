@@ -1,10 +1,10 @@
-﻿using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using ProSpace.Infrastructure.Configurations;
+using Microsoft.Extensions.Configuration;
 using ProSpace.Infrastructure.Entites.Supply;
 using ProSpace.Infrastructure.Entites.Users;
-using Microsoft.Extensions.Configuration;
+using System.Reflection;
 
 namespace ProSpace.Infrastructure
 {
@@ -37,12 +37,7 @@ namespace ProSpace.Infrastructure
                 property.SetScale(2);
             }
 
-            modelBuilder.ApplyConfiguration(new AppRoleConfiguration());
-            modelBuilder.ApplyConfiguration(new AppUserConfiguration());
-            modelBuilder.ApplyConfiguration(new CustomerConfiguration());
-            modelBuilder.ApplyConfiguration(new ItemConfiguration());
-            modelBuilder.ApplyConfiguration(new OrderConfiguration());
-            modelBuilder.ApplyConfiguration(new OrderItemConfiguration());
+            modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
         }
     }
 }

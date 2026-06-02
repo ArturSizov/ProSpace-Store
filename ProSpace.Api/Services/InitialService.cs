@@ -1,7 +1,9 @@
 ﻿using Microsoft.AspNetCore.Identity;
+using ProSpace.Application;
+using ProSpace.Domain.Interfaces.Repositories;
+using ProSpace.Application.Validations;
 using ProSpace.Infrastructure;
 using ProSpace.Infrastructure.Entites.Users;
-using ProSpace.Domain.Interfaces.Repositories;
 
 namespace ProSpace.Api.Services
 {

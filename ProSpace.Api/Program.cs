@@ -3,19 +3,19 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using ProSpace.Api.Services;
 using ProSpace.Infrastructure;
-using ProSpace.Infrastructure.Entites.Users;
 using ProSpace.Infrastructure.Repositories;
 using ProSpace.Domain.Interfaces.Repositories;
 using ProSpace.Domain.Interfaces.Services;
 using ProSpace.Domain.Interfaces.Validations;
 using ProSpace.Domain.Models;
-using ProSpace.Domain.Services;
-using ProSpace.Infrastructure.Validations;
-using ProSpace.Infrastructure.Validations.Services;
+using ProSpace.Application.Services;
+using ProSpace.Application.Validations;
+using ProSpace.Application.Validations.Services;
 using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using ProSpace.Infrastructure.Entites.Users;
 
 internal class Program
 {
@@ -124,8 +124,8 @@ internal class Program
             options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {
                 In = ParameterLocation.Header,
-                Description = "Веедите валидный токен",
-                Name = "Аторизация",
+                Description = "Enter a valid token",
+                Name = "Authorization",
                 Type = SecuritySchemeType.Http,
                 BearerFormat = "JWT",
                 Scheme = "Bearer"

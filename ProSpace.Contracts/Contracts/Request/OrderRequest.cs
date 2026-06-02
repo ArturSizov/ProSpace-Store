@@ -1,6 +1,4 @@
-﻿using Newtonsoft.Json;
-
-namespace ProSpace.Api.Contracts.Request
+﻿namespace ProSpace.Api.Contracts.Request
 {
     /// <summary>
     /// Order request

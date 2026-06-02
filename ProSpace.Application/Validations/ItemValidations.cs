@@ -1,9 +1,9 @@
 ﻿using FluentValidation;
+using ProSpace.Application.Properties;
 using ProSpace.Domain.Models;
-using ProSpace.Infrastructure.Properties;
 using System.Text.RegularExpressions;
 
-namespace ProSpace.Infrastructure.Validations
+namespace ProSpace.Application.Validations
 {
     public class ItemValidations : AbstractValidator<ItemModel>
     {
@@ -16,7 +16,7 @@ namespace ProSpace.Infrastructure.Validations
 
             RuleFor(i => i.Code)
                 .NotEmpty()
-                .Matches(_regex).WithMessage($"'Code' {Resources.FormatErrorItemCode}");
+                .Matches(_regex).WithMessage($"'Code' {Resources.FormatErrorItemCode} ");
 
 
             RuleFor(x => x.Category)

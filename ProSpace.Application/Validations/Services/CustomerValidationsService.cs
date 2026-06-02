@@ -1,10 +1,8 @@
 ﻿using FluentValidation;
-using FluentValidation.Results;
 using ProSpace.Domain.Interfaces.Validations;
 using ProSpace.Domain.Models;
-using System.Threading.Tasks;
 
-namespace ProSpace.Infrastructure.Validations.Services
+namespace ProSpace.Application.Validations.Services
 {
     public class CustomerValidationsService : IValidationProvider<CustomerModel>
     {

@@ -20,8 +20,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ProSpace.DataAcsess\ProSpace.Infrastructure.csproj" />
+    <ProjectReference Include="..\ProSpace.Application\ProSpace.Application.csproj" />
+    <ProjectReference Include="..\ProSpace.Contracts\ProSpace.Contracts.csproj" />
     <ProjectReference Include="..\ProSpace.Domain\ProSpace.Domain.csproj" />
+    <ProjectReference Include="..\ProSpace.Infrastructure\ProSpace.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

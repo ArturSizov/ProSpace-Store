@@ -2,7 +2,7 @@
 using ProSpace.Domain.Interfaces.Validations;
 using ProSpace.Domain.Models;
 
-namespace ProSpace.Infrastructure.Validations.Services
+namespace ProSpace.Application.Validations.Services
 {
     public class OrderItemValidationsService : IValidationProvider<OrderItemModel>
     {

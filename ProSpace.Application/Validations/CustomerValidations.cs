@@ -1,9 +1,9 @@
 ﻿using FluentValidation;
+using ProSpace.Application.Properties;
 using ProSpace.Domain.Models;
-using ProSpace.Infrastructure.Properties;
 using System.Text.RegularExpressions;
 
-namespace ProSpace.Infrastructure.Validations
+namespace ProSpace.Application.Validations
 {
     public class CustomerValidations : AbstractValidator<CustomerModel>
     {

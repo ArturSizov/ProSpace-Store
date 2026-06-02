@@ -1,7 +1,7 @@
 ﻿using FluentValidation;
 using ProSpace.Domain.Models;
 
-namespace ProSpace.Infrastructure.Validations
+namespace ProSpace.Application.Validations
 {
     public class OrderValidations : AbstractValidator<OrderModel>
     {

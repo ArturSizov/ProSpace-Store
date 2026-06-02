@@ -3,7 +3,7 @@ using ProSpace.Domain.Interfaces.Services;
 using ProSpace.Domain.Interfaces.Validations;
 using ProSpace.Domain.Models;
 
-namespace ProSpace.Domain.Services
+namespace ProSpace.Application.Services
 {
     public class OrdersService : IOrderService
     {
