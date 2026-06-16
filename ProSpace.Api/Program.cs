@@ -1,21 +1,21 @@
 using FluentValidation;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using ProSpace.Api.Services;
-using ProSpace.Infrastructure;
-using ProSpace.Infrastructure.Repositories;
-using ProSpace.Domain.Interfaces.Repositories;
-using ProSpace.Domain.Interfaces.Services;
-using ProSpace.Domain.Interfaces.Validations;
-using ProSpace.Domain.Models;
+using ProSpace.Application.Common.Interfaces;
+using ProSpace.Application.Interfaces.Repositories;
+using ProSpace.Application.Interfaces.Services;
 using ProSpace.Application.Services;
 using ProSpace.Application.Validations;
-using ProSpace.Application.Validations.Services;
-using Microsoft.OpenApi.Models;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using System.Text;
+using ProSpace.Infrastructure;
 using ProSpace.Infrastructure.Entites.Users;
+using ProSpace.Infrastructure.Identity.Services;
+using ProSpace.Infrastructure.Repositories;
+using ProSpace.Infrastructure.Services;
+using System.Text;
 
 internal class Program
 {
@@ -26,24 +26,28 @@ internal class Program
         // For Entity Framework
         var configuration = builder.Configuration;
 
-        builder.Services.AddEndpointsApiExplorer();
+        // --- DATABASE & IDENTITY CONFIGURATION ---
+        builder.Services.AddDbContext<ProSpaceDbContext>(options =>
+        {
+            options.UseSqlite(builder.Configuration.GetConnectionString(nameof(ProSpaceDbContext)));
+        });
 
-        builder.Services.AddDbContext<ProSpaceDbContext>(
-                        options => {  options.UseSqlite(builder.Configuration.GetConnectionString(nameof(ProSpaceDbContext))); })
-                        .AddIdentityApiEndpoints<AppUser>()
-                        .AddRoles<AppRole>()
-                        .AddEntityFrameworkStores<ProSpaceDbContext>()
-                        .AddDefaultTokenProviders();
 
+        // Replaced AddIdentityApiEndpoints with standard AddIdentity to prevent JWT authentication conflicts
+        builder.Services.AddIdentity<AppUser, AppRole>()
+            .AddEntityFrameworkStores<ProSpaceDbContext>()
+            .AddDefaultTokenProviders();
+
+        // AUTHENTICATION & AUTHORIZATION
         builder.Services.AddAuthorization();
 
-        // Adding Authentication
         builder.Services.AddAuthentication(options =>
         {
             options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
             options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
             options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
-        }).AddJwtBearer(options =>
+        })
+        .AddJwtBearer(options =>
         {
             options.SaveToken = true;
             options.RequireHttpsMetadata = false;
@@ -53,11 +57,15 @@ internal class Program
                 ValidateAudience = true,
                 ValidAudience = configuration["JWT:ValidAudience"],
                 ValidIssuer = configuration["JWT:ValidIssuer"],
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["JWT:Secret"] ?? 
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["JWT:Secret"] ??
                                                                                    throw new Exception("JWT secret not found")))
             };
         });
 
+        builder.Services.AddIdentityCore<AppUser>()
+                .AddRoles<AppRole>()
+                .AddEntityFrameworkStores<ProSpaceDbContext>()
+                .AddDefaultTokenProviders();
 
         builder.Services.Configure<IdentityOptions>(options =>
         {
@@ -83,7 +91,8 @@ internal class Program
 
         });
 
-        // repositories
+        builder.Services.AddHttpContextAccessor();
+
         builder.Services
             .AddScoped<IItemsRepository, ItemsRepository>()
             .AddScoped<IOrderItemsRepository, OrderItemsRepository>()
@@ -91,36 +100,31 @@ internal class Program
             .AddScoped<ICustomersRepository, CustomerRepository>()
             .AddScoped<IUnitOfWork, UnitOfWork>();
 
-        // domain services
+        // SERVICES (BLL) 
         builder.Services
+            .AddScoped<IIdentityService, IdentityService>()
             .AddScoped<IItemsService, ItemsService>()
-            .AddScoped<IOtderItemsService, OrderItemsService>()
+            .AddScoped<IOrderItemsService, OrderItemsService>()
             .AddScoped<IOrderService, OrdersService>()
             .AddScoped<ICustomersService, CustomersService>()
-            .AddScoped<RoleManager<AppRole>>();
+            .AddScoped<ITokenService, TokenService>();
 
-        // validation services
-        builder.Services
-            .AddScoped<IValidationProvider<CustomerModel>, CustomerValidationsService>()
-            .AddScoped<IValidator<CustomerModel>, CustomerValidations>()
+        // VALIDATORS
+        builder.Services.AddValidatorsFromAssemblyContaining<RegisterCustomerValidator>();
 
-            .AddScoped<IValidationProvider<ItemModel>, ItemValidationsService>()
-            .AddScoped<IValidator<ItemModel>, ItemValidations>()
-
-            .AddScoped<IValidationProvider<OrderModel>, OrderValidationsService>()
-            .AddScoped<IValidator<OrderModel>, OrderValidations>()
-
-            .AddScoped<IValidationProvider<OrderItemModel>, OrderItemValidationsService>()
-            .AddScoped<IValidator<OrderItemModel>, OrderItemValidations>();
-
-        // background services
+        //BACKGROUND SERVICES
         builder.Services.AddHostedService<InitialService>();
 
+        // CONTROLLERS & SWAGGER
         builder.Services.AddControllers();
         builder.Services.AddEndpointsApiExplorer();
+
         builder.Services.AddSwaggerGen(options =>
         {
             options.SwaggerDoc("v1", new OpenApiInfo { Title = "Auto API", Version = "V1" });
+
+            options.SchemaFilter<ProSpace.Api.Infrastructure.Swagger.BaseResponseSchemaFilter>();
+
             options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {
                 In = ParameterLocation.Header,
@@ -130,28 +134,33 @@ internal class Program
                 BearerFormat = "JWT",
                 Scheme = "Bearer"
             });
+
             options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
             {
+                Reference = new OpenApiReference
                 {
-                    new OpenApiSecurityScheme
-                    {
-                        Reference = new OpenApiReference
-                        {
-                            Type = ReferenceType.SecurityScheme,
-                            Id = "Bearer"
-                        }
-                    },
-                    new string[] {}
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
                 }
-            });
+            },
+            new string[] {}
+        }
+    });
+
+            var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+            options.IncludeXmlComments(xmlPath);
         });
+
 
         var app = builder.Build();
 
-        //Enable CORS
+        // Enable CORS
         app.UseCors(c => c.AllowAnyHeader().AllowAnyOrigin().AllowAnyMethod());
 
-        // Configure the HTTP request pipeline.
         if (app.Environment.IsDevelopment())
         {
             app.UseSwagger();
@@ -164,8 +173,6 @@ internal class Program
         app.UseAuthorization();
 
         app.MapControllers();
-
-        //app.MapIdentityApi<AppUser>();
 
         await app.RunAsync();
     }

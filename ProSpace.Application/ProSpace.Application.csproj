@@ -8,9 +8,12 @@
 
   <ItemGroup>
     <PackageReference Include="FluentValidation" Version="11.11.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.11" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.1" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\ProSpace.Contracts\ProSpace.Contracts.csproj" />
     <ProjectReference Include="..\ProSpace.Domain\ProSpace.Domain.csproj" />
   </ItemGroup>
 

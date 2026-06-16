@@ -1,9 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ProSpace.Infrastructure.Mappers;
-using ProSpace.Domain.Interfaces.Repositories;
+using ProSpace.Application.Interfaces.Repositories;
 using ProSpace.Domain.Models;
-using ProSpace.Infrastructure.Entites.Supply;
 
 namespace ProSpace.Infrastructure.Repositories
 {
@@ -31,23 +30,20 @@ namespace ProSpace.Infrastructure.Repositories
         }
 
         /// <inheritdoc/>
-        public async Task<(ItemModel?, IDictionary<string, string[]>?)> CreateAsync(ItemModel entity, CancellationToken cancellationToken = default)
+        public async Task CreateAsync(ItemModel item, CancellationToken cancellationToken = default)
         {
             try
             {
-                var item = entity.ToEntity();
-                var result = await _dbContext.Items.AddAsync(item, cancellationToken);
-                var saved = await _dbContext.SaveChangesAsync(cancellationToken);
+                var entity = item.ToEntity();
 
-                if (saved > 0)
-                    return (result.Entity.ToModel(), null);
+                await _dbContext.Items.AddAsync(entity, cancellationToken);
 
-                return (null, null);
+                _logger.LogInformation("Item {Id} attached to the context for creation", item.Id);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Cannot create an item");
-                return (null, null);
+                _logger.LogError(ex, "Critical error adding item {Id} to DB context", item.Id);
+                throw;
             }
         }
 
@@ -56,10 +52,13 @@ namespace ProSpace.Infrastructure.Repositories
         {
             try
             {
-                var found = await _dbContext.Items.FindAsync([id], cancellationToken);
+                var found = await _dbContext.Items
+                         .AsNoTracking()
+                         .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+
                 if (found == null)
                 {
-                    _logger.LogWarning("Cannot find item with id = {id}", id);
+                    _logger.LogWarning("Cannot find items with id = {id}", id);
                     return null;
                 }
 
@@ -67,118 +66,63 @@ namespace ProSpace.Infrastructure.Repositories
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Cannot find item");
-                return null;
+                _logger.LogError(ex, "Critical error reading item {Id} in DB context", id);
+                throw;
             }
         }
 
         /// <inheritdoc/>
-        public async Task<ItemModel?> UpdateAsync(ItemModel entity, CancellationToken cancellationToken = default)
+        public async Task UpdateAsync(ItemModel item, CancellationToken cancellationToken = default)
         {
-            try
-            {
-                var found = await _dbContext.Items.FindAsync([entity.Id], cancellationToken);
+            var found = await _dbContext.Items.FindAsync([item.Id], cancellationToken)
+            ?? throw new KeyNotFoundException($"Item with id = {item.Id} not found.");
 
-                if (found == null)
-                {
-                    _logger.LogWarning("Cannot find item with id = {id}", entity.Id);
-                    return null;
-                }
-
-                found.Name = entity.Name;
-                found.Code = entity.Code;
-                found.Price = entity.Price;
-                found.Category = entity.Category;
-
-                _ = _dbContext.Items.Update(found);
-
-                var saved = await _dbContext.SaveChangesAsync(cancellationToken);
-
-                if (saved > 0)
-                    return found.ToModel();
-
-                _logger.LogError("Cannot save the updated data");
-                return null;
-
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Cannot update item");
-                return null;
-            }
+            found.Name = item.Name;
+            found.Code = item.Code;
+            found.Price = item.Price;
+            found.Category = item.Category;
         }
 
         /// <inheritdoc/>
-        public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+        public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
         {
             try
             {
                 var found = await _dbContext.Items.FindAsync([id], cancellationToken);
-                if (found == null)
+
+                if (found != null)
                 {
-                    _logger.LogWarning("Cannot find item with id = {id}", id);
-                    return false;
+                    _dbContext.Items.Remove(found);
+                    _logger.LogInformation("Item with ID {CustomerId} marked for deletion", id);
                 }
-
-                _ = _dbContext.Items.Remove(found);
-
-                var saved = await _dbContext.SaveChangesAsync(cancellationToken);
-
-                return saved > 0;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Cannot delete item");
-                return false;
+                _logger.LogError(ex, "Critical error deleting item {Id} in DB context: {Message}", id, ex.Message);
+                throw;
             }
         }
 
         /// <inheritdoc/>
-        public async Task<ItemModel[]?> ReadAllAsync(CancellationToken cancellationToken = default)
+        public async Task<ItemModel[]> ReadAllAsync(CancellationToken cancellationToken = default)
         {
             try
             {
-                var items = await _dbContext.Items.ToArrayAsync();
-                return items.Select(x => x.ToModel()).ToArray();
+                var items = await _dbContext.Items
+                          .AsNoTracking()
+                          .Select(o => o.ToModel())
+                          .ToArrayAsync(cancellationToken);
+
+                _logger.LogInformation("Total items loaded: {Length}", items.Length);
+
+                return items;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Cannot read all items");
-                return null;
+                _logger.LogError(ex, "Error reading list of all items from database");
+
+                throw;
             }
-        }
-
-        /// <inheritdoc/>
-        public async Task<ItemModel[]?> GetByFilterAsync(string code, string name, decimal price, string category, CancellationToken cancellationToken = default)
-        {
-            var query = _dbContext.Items.AsNoTracking();
-
-            if(!string.IsNullOrEmpty(code))
-                query = query.Where(i => i.Code.Contains(code));
-
-            if (!string.IsNullOrEmpty(name))
-                query = query.Where(i => i.Name.Contains(name));
-
-            if (!string.IsNullOrEmpty(category))
-                query = query.Where(i => i.Category!.Contains(category));
-
-            if (price > 0)
-                query = query.Where(i => i.Price > price);
-
-            var items = await query.ToListAsync();
-
-            return items.Select(x => x.ToModel()).ToArray();
-        }
-
-        /// <inheritdoc/>
-        public async Task<ItemModel[]?> GetByPageAsync(int page, int pasgeSize)
-        {
-            var query = await _dbContext.Items.AsNoTracking()
-                                               .Skip((page - 1) * pasgeSize)
-                                               .Take(pasgeSize)
-                                               .ToListAsync();
-
-            return query.Select(x => x.ToModel()).ToArray();
         }
     }
 }

@@ -117,10 +117,25 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="FormatErrorCustomerCode" xml:space="preserve">
-    <value>Format error. Parville format: 1111-1111</value>
+  <data name="BuyerIDRequiredToUpdate" xml:space="preserve">
+    <value>Buyer ID (Id) is required to update.</value>
   </data>
-  <data name="FormatErrorItemCode" xml:space="preserve">
-    <value>Format error. Parville format: 11-1111-SD11</value>
+  <data name="DiscountCannotExceed100" xml:space="preserve">
+    <value>'{PropertyName}' cannot exceed 100%</value>
+  </data>
+  <data name="CodeFormatError" xml:space="preserve">
+    <value>'{PropertyName}' is not a valid code format. The valid format is '{ExpectedFormat}'. You entered: '{PropertyValue}'</value>
+  </data>
+  <data name="UserCode" xml:space="preserve">
+    <value>User code</value>
+  </data>
+  <data name="ProductaCode" xml:space="preserve">
+    <value>Product code</value>
+  </data>
+  <data name="Discount" xml:space="preserve">
+    <value>Discount</value>
+  </data>
+  <data name="Category" xml:space="preserve">
+    <value>Category</value>
   </data>
 </root>

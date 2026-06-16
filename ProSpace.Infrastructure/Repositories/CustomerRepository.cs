@@ -1,8 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using ProSpace.Infrastructure.Mappers;
-using ProSpace.Domain.Interfaces.Repositories;
+using ProSpace.Application.Interfaces.Repositories;
 using ProSpace.Domain.Models;
+using ProSpace.Infrastructure.Mappers;
 
 namespace ProSpace.Infrastructure.Repositories
 {
@@ -30,90 +30,67 @@ namespace ProSpace.Infrastructure.Repositories
         }
 
         /// <inheritdoc/>
-        public async Task<(CustomerModel?, IDictionary<string, string[]>?)> CreateAsync(CustomerModel entity, CancellationToken cancellationToken = default)
+        public async Task CreateAsync(CustomerModel customer, CancellationToken cancellationToken = default)
         {
             try
             {
-                var customer = entity.ToEntity();
-                var result = await _dbContext.Customers.AddAsync(customer, cancellationToken);
-                var saved = await _dbContext.SaveChangesAsync(cancellationToken);
+                var entity = customer.ToEntity();
 
-                if (saved > 0)
-                    return (result.Entity.ToModel(), null);
+                await _dbContext.Customers.AddAsync(entity, cancellationToken);
 
-                return (null, null);
+                _logger.LogInformation("Customers {Id} attached to the context for creation", customer.Id);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Cannot create an customer");
-                return (null, null);
+                _logger.LogError(ex, "Critical error adding customer {Id} to DB context", customer.Id);
+                throw;
             }
         }
 
         /// <inheritdoc/>
-        public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+        public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
         {
             try
             {
-                var found = await _dbContext.Customers.FindAsync([id], cancellationToken);
+                var found = await _dbContext.Customers
+                         .AsNoTracking()
+                         .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+
                 if (found == null)
                 {
-                    _logger.LogWarning("Cannot find customer with id = {id}", id);
-                    return false;
+                    _logger.LogWarning("Delete failed. Customer with ID {Id} not found", id);
+                    throw new KeyNotFoundException($"Customer with id = {id} was not found.");
                 }
 
-                _ = _dbContext.Customers.Remove(found);
-
-                var saved = await _dbContext.SaveChangesAsync(cancellationToken);
-
-                return saved > 0;
+                _dbContext.Customers.Remove(found);
+                _logger.LogInformation("Customer with ID {Id} marked for deletion in memory context", id);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not KeyNotFoundException)
             {
-                _logger.LogError(ex, "Cannot delete customer");
-                return false;
+                _logger.LogError(ex, "Critical error deleting customer {Id} in DB context", id);
+                throw;
             }
         }
 
         /// <inheritdoc/>
-        public async Task<CustomerModel?> GetByEmailAsync(string email)
+        public async Task<CustomerModel[]> ReadAllAsync(CancellationToken cancellationToken = default)
         {
             try
             {
-                var customerEntity = await _dbContext.Customers.FirstOrDefaultAsync(c => c.AppUser.Email == email);
+                var customers = await _dbContext.Customers
+                          .AsNoTracking()
+                          .Select(o => o.ToModel())
+                          .ToArrayAsync(cancellationToken);
 
-                return customerEntity?.ToModel() ?? throw new Exception("Customer not found");
-            }
-            catch (Exception)
-            {
-                return null;
-            }
-        }
+                _logger.LogInformation("Total customers loaded: {Length}", customers.Length);
 
-        /// <inheritdoc/>
-        public Task<CustomerModel[]?> GetByFilterAsync(string code, string name, decimal price, string category, CancellationToken cancellationToken = default)
-        {
-            throw new NotImplementedException();
-        }
-
-        /// <inheritdoc/>
-        public Task<CustomerModel[]?> GetByPageAsync(int page, int pasgeSize)
-        {
-            throw new NotImplementedException();
-        }
-
-        /// <inheritdoc/>
-        public async Task<CustomerModel[]?> ReadAllAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                var customers = await _dbContext.Customers.ToArrayAsync();
-                return customers.Select(x => x.ToModel()).ToArray();
+                return customers;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Cannot read all customers");
-                return null;
+                _logger.LogError(ex, "Error reading list of all customers from database");
+
+                throw;
             }
         }
 
@@ -122,7 +99,10 @@ namespace ProSpace.Infrastructure.Repositories
         {
             try
             {
-                var found = await _dbContext.Customers.FindAsync([id], cancellationToken);
+                var found = await _dbContext.Customers
+                         .AsNoTracking()
+                         .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+
                 if (found == null)
                 {
                     _logger.LogWarning("Cannot find customer with id = {id}", id);
@@ -133,43 +113,46 @@ namespace ProSpace.Infrastructure.Repositories
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Cannot find customer");
-                return null;
+                _logger.LogError(ex, "Critical error reading customer {Id} in DB context", id);
+                throw;
             }
         }
 
         /// <inheritdoc/>
-        public async Task<CustomerModel?> UpdateAsync(CustomerModel entity, CancellationToken cancellationToken = default)
+        public async Task UpdateAsync(CustomerModel customer, CancellationToken cancellationToken = default)
+        {
+            var found = await _dbContext.Customers.FindAsync([customer.Id], cancellationToken)
+                 ?? throw new KeyNotFoundException($"Customer with id = {customer.Id} not found.");
+
+            found.Name = customer.Name;
+            found.Code = customer.Code;
+            found.Address = customer.Address;
+            found.Discount = customer.Discount;
+        }
+
+        /// <inheritdoc/>
+        public async Task<CustomerModel?> GetByEmailAsync(string email, CancellationToken cancellationToken = default)
         {
             try
             {
-                var found = await _dbContext.Customers.FindAsync([entity.Id], cancellationToken);
+                var found = await _dbContext.Customers
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(o => o.AppUser.Email == email, cancellationToken);
+
                 if (found == null)
                 {
-                    _logger.LogWarning("Cannot find customer with id = {id}", entity.Id);
+                    _logger.LogWarning("Cannot find customers with email = {email}", email);
                     return null;
                 }
 
-                found.Name = entity.Name;
-                found.Code = entity.Code;
-                found.Address = entity.Address;
-                found.Discount = entity.Discount;
-
-                _ = _dbContext.Customers.Update(found);
-
-                var saved = await _dbContext.SaveChangesAsync(cancellationToken);
-                if (saved > 0)
-                    return found.ToModel();
-
-                _logger.LogError("Cannot save the updated data");
-                return null;
+                return found.ToModel();
             }
-
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Cannot update customer");
-                return null;
+                _logger.LogError(ex, "Critical error reading customer {Email} in DB context", email);
+                throw;
             }
         }
+
     }
 }

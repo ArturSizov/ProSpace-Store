@@ -19,8 +19,9 @@ namespace ProSpace.Infrastructure.Configurations
 
             builder.HasOne(x => x.AppUser)
                     .WithOne(u => u.Customer)
-                    .HasForeignKey<AppUser>(c => c.CustomerId)
-                    .IsRequired();
+                    .HasForeignKey<CustomerEntity>(c => c.AppUserId)
+                    .IsRequired(false)
+                    .OnDelete(DeleteBehavior.Cascade);
 
             builder.HasMany(x => x.Orders)
                    .WithOne(o => o.Customer)

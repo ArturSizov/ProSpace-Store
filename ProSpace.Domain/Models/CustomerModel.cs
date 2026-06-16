@@ -10,5 +10,6 @@
         public string Code { get; set; } = null!;
         public string? Address { get; set; }
         public decimal? Discount { get; set; }
+        public Guid AppUserId { get; set; }
     }
 }

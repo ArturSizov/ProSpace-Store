@@ -1,15 +1,15 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using ProSpace.Api.Contracts.Request;
-using ProSpace.Api.Contracts.Response;
-using ProSpace.Domain.Interfaces.Services;
-using ProSpace.Domain.Models;
+using ProSpace.Application.Interfaces.Services;
+using ProSpace.Contracts.DTO;
+using ProSpace.Contracts.Responses;
 
 namespace ProSpace.Api.Controllers
 {
-    [ApiController]
-    [Route("[controller]")]
-    public class OrdersController : ControllerBase
+    /// <summary>
+    /// Provides HTTP endpoints for managing order headers and processing customer sales orders.
+    /// </summary>
+    public class OrdersController : BaseApiController
     {
         /// <summary>
         /// Logger
@@ -17,15 +17,16 @@ namespace ProSpace.Api.Controllers
         private readonly ILogger<OrdersController> _logger;
 
         /// <summary>
-        /// Order service
+        /// Orders service
         /// </summary>
         private readonly IOrderService _service;
 
+
         /// <summary>
-        /// Ctor
+        /// Initializes a new instance of the <see cref="OrdersController"/> class.
         /// </summary>
-        /// <param name="logger"></param>
-        /// <param name="service"></param>
+        /// <param name="logger">The application logger infrastructure.</param>
+        /// <param name="service">The service handling core order business logic.</param>
         public OrdersController(ILogger<OrdersController> logger, IOrderService service)
         {
             _logger = logger;
@@ -33,211 +34,154 @@ namespace ProSpace.Api.Controllers
         }
 
         /// <summary>
-        /// Get orders response
+        /// Creates and registers a new order in the system.
         /// </summary>
-        /// <returns></returns>
-        [HttpGet("/orders")]
-        [Authorize(Roles = "Manager")]
-        public async Task<ActionResult<List<OrderResponse>>> GetAllOrdersAsync()
+        /// <param name="dto">The order data transfer object containing customer and date specifications.</param>
+        /// <param name="ct">A token to monitor for cancellation requests.</param>
+        /// <returns>A unified response wrapper containing the generated ID of the new order.</returns>
+        /// <response code="200">The order was successfully validated and scheduled for creation.</response>
+        /// <response code="400">Validation failed or input data was corrupted.</response>
+        [HttpPost]
+        [Authorize]
+        [ProducesResponseType(typeof(BaseIdResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(BaseResponse<CreateOrderDto>), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> Create([FromBody] CreateOrderDto dto, CancellationToken ct)
         {
-            try
-            {
-                var response = await _service.ReadAllAsync();
-
-                _logger.LogInformation($"{response?.Count()}");
-
-                return Ok(response);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex.Message);
-                return BadRequest(ex.Message);
-            }
+            var response = await _service.CreateAsync(dto, ct);
+            return ProcessResponse(response);
         }
 
         /// <summary>
-        /// Receives orders by customer ID controller
+        /// Retrieves the profile details of a specific order header using its unique identifier.
         /// </summary>
-        /// <param name="customerId"></param>
-        /// <returns></returns>
-        [HttpGet("/orders/{customerId:guid}")]
+        /// <param name="id">The unique identifier (GUID) of the order.</param>
+        /// <param name="ct">A token to monitor for cancellation requests.</param>
+        /// <returns>A unified response wrapper containing the matching order payload inside the Data field.</returns>
+        /// <response code="200">The order record was successfully located and fetched.</response>
+        /// <response code="404">No order was found matching the provided identifier.</response>
+        [HttpGet("{id:guid}")]
         [Authorize]
-        public async Task<ActionResult<OrderRequest[]>> GetByCustomerId(Guid customerId)
+        [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
         {
-            try
-            {
-                var orders = await _service.GetByCustomerId(customerId);
-
-                _logger.LogInformation($"{orders?.Count()}");
-
-                return Ok(orders);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex.Message);
-                return BadRequest(ex.Message);
-            }
+            var response = await _service.ReadAsync(id, ct);
+            return ProcessResponse(response);
         }
 
         /// <summary>
-        /// Receives orders by customer code
+        /// Retrieves a complete list of all orders registered in the system database.
         /// </summary>
-        /// <param name="customerCode"></param>
-        /// <returns></returns>
-        [HttpPut("/orders/{customerCode}")]
-        [Authorize]
-        public async Task<ActionResult<OrderRequest[]>> GetByCustomerCodeAsync(string customerCode)
+        /// <param name="ct">A token to monitor for cancellation requests.</param>
+        /// <returns>A unified response wrapper containing the array of orders inside the Data field.</returns>
+        /// <response code="200">The list of orders was successfully fetched (may return an empty array if no records exist).</response>
+        [HttpGet]
+        [Authorize(Roles = "manager,Manager")]
+        [ProducesResponseType(typeof(BaseResponse<OrderDto[]>), StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetAll(CancellationToken ct)
         {
-            try
-            {
-                var orders = await _service.GetByCustomerCodeAsync(customerCode);
-
-                _logger.LogInformation(orders?.Count().ToString());
-
-                return Ok(orders);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex.Message);
-                return BadRequest(ex.Message);
-            }
+            var response = await _service.ReadAllAsync(ct);
+            return ProcessResponse(response);
         }
 
         /// <summary>
-        /// Receives an order by order number
+        /// Updates the core details (dates, numbers, status) of an existing order header.
         /// </summary>
-        /// <param name="orderNumber"></param>
-        /// <returns></returns>
-        [HttpPut("/orders/{orderNumber:int}")]
+        /// <param name="id">The unique identifier (GUID) of the order being updated. Must match the ID inside the request body.</param>
+        /// <param name="dto">The order data transfer object containing the updated fields.</param>
+        /// <param name="ct">A token to monitor for cancellation requests.</param>
+        /// <returns>A unified response wrapper containing the updated order details inside the Data field.</returns>
+        /// <response code="200">The order was successfully located, validated, and updated in the system.</response>
+        /// <response code="400">The route ID does not match the body ID, or the input data failed validation rules.</response>
+        /// <response code="404">The order with the specified identifier was not found in the database.</response>
+        [HttpPut("{id:guid}")]
         [Authorize]
-        public async Task<ActionResult<OrderRequest>> GetByOrderNumber(int orderNumber)
+        [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> Update(Guid id, [FromBody] OrderDto dto, CancellationToken ct)
         {
-            try
+            if (id != dto.Id)
             {
-                var order = await _service.GetByOrderNumber(orderNumber);
-
-                if(order == null)
-                {
-                    _logger.LogError("Order by number: {orderNumber} not found", orderNumber);
-                    return NotFound($"Order by number: {orderNumber} not found");
-                }
-
-                _logger.LogInformation(order?.Id.ToString());
-
-                return Ok(order);
+                _logger.LogWarning("Route ID {RouteId} does not match Request Body ID {BodyId}", id, dto.Id);
+                return BadRequest(BaseResponse<OrderDto>.Failure("The URL identifier does not match the provided object data identifier."));
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex.Message);
-                return BadRequest(ex.Message);
-            }
+
+            var response = await _service.UpdateAsync(dto, ct);
+            return ProcessResponse(response);
         }
 
         /// <summary>
-        /// Create order
+        /// Permanently deletes an order header and its operational history from the database.
         /// </summary>
-        /// <param name="request"></param>
-        /// <returns></returns>
-        [HttpPost("/create/order")]
+        /// <param name="id">The unique identifier (GUID) of the order to remove.</param>
+        /// <param name="ct">A token to monitor for cancellation requests.</param>
+        /// <returns>A unified response wrapper verifying completion via the Id field.</returns>
+        /// <response code="200">The order was found and deleted from the persistence layer.</response>
+        /// <response code="404">No order matched the provided identity to perform deletion.</response>
+        [HttpDelete("{id:guid}")]
         [Authorize]
-        public async Task<IActionResult> CreateOrderAsync([FromBody] OrderRequest request)
+        [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
         {
-            try
-            {
-                var order = new OrderModel
-                {
-                    CustomerId = request.CustomerId, 
-                    OrderDate = request.OrderDate, 
-                    ShipmentDate = request.ShipmentDate, 
-                    OrderNumber = request.OrderNumber, 
-                    Status = request.Status 
-                };
-
-                var result = await _service.CreateAsync(order);
-
-                if (result.Item1 == null)
-                {
-                    _logger.LogError("Failed to create order");
-
-                    return BadRequest(result.Item2);
-                }
-
-                _logger.LogInformation($"Order created");
-
-                return Ok(result.Item1);
-
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex.Message);
-
-                return BadRequest(ex.Message);
-            }
+            var response = await _service.DeleteAsync(id, ct);
+            return ProcessResponse(response);
         }
 
         /// <summary>
-        /// Update order reques
+        /// Searches for and retrieves a single order profile using its unique human-readable number.
         /// </summary>
-        /// <param name="request"></param>
-        /// <returns></returns>
-        [HttpPut("/update/order/{id:guid}")]
+        /// <param name="number">The sequential integer number assigned to the target order.</param>
+        /// <param name="ct">A token to monitor for cancellation requests.</param>
+        /// <returns>A unified response wrapper containing the matching order details.</returns>
+        /// <response code="200">The order with the requested number was found.</response>
+        /// <response code="404">No order exists with the specified number.</response>
+        [HttpGet("by-number/{number:int}")]
         [Authorize]
-        public async Task<IActionResult> UpdateOrderItemAsync(Guid id, [FromBody] OrderRequest request)
+        [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetByNumber(int number, CancellationToken ct)
         {
-            try
-            {
-                var order = new OrderModel
-                {
-                    Id = id, 
-                    CustomerId = request.CustomerId, 
-                    OrderDate = request.OrderDate, 
-                    ShipmentDate = request.ShipmentDate, 
-                    OrderNumber = request.OrderNumber, 
-                    Status = request.Status 
-                };
+            var response = await _service.GetByOrderNumberAsync(number, ct);
+            return ProcessResponse(response);
+        }
 
-                var result = await _service.UpdateAsync(order);
 
-                _logger.LogInformation($"Order updated");
-
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex.Message);
-
-                return BadRequest(ex.Message);
-            }
+        /// <summary>
+        /// Retrieves all orders associated with a specific customer using their unique business code.
+        /// </summary>
+        /// <param name="customerCode">The unique business code string of the customer.</param>
+        /// <param name="ct">A token to monitor for cancellation requests.</param>
+        /// <returns>A unified response wrapper containing the array of matching orders inside the Data field.</returns>
+        /// <response code="200">The collection of orders for the specified customer was successfully fetched (can be empty).</response>
+        /// <response code="401">The request lacks valid authentication credentials.</response>
+        [HttpGet("by-customer-code/{customerCode}")]
+        [Authorize]
+        [ProducesResponseType(typeof(BaseResponse<OrderDto[]>), StatusCodes.Status200OK)] // ИСПРАВЛЕНО: Изменен дженерик на массив OrderDto[]
+        [ProducesResponseType(typeof(BaseResponse<OrderDto[]>), StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> GetByCustomerCode(string customerCode, CancellationToken ct)
+        {
+            var response = await _service.GetByCustomerCodeAsync(customerCode, ct);
+            return ProcessResponse(response);
         }
 
         /// <summary>
-        /// Delete order 
+        /// Retrieves all orders associated with a specific customer using their unique identifier.
         /// </summary>
-        /// <param name="request"></param>
-        /// <returns></returns>
-        [HttpDelete("/delete/order/{id:guid}")]
+        /// <param name="customerId">The unique identifier (GUID) of the customer.</param>
+        /// <param name="ct">A token to monitor for cancellation requests.</param>
+        /// <returns>A unified response wrapper containing the array of matching orders inside the Data field.</returns>
+        /// <response code="200">The collection of orders for the specified customer ID was successfully fetched (can be empty).</response>
+        /// <response code="401">The request lacks valid authentication credentials.</response>
+        [HttpGet("by-customer-id/{customerId:guid}")]
         [Authorize]
-        public async Task<IActionResult> DeleteOrderItemAsync(Guid id)
+        [ProducesResponseType(typeof(BaseResponse<OrderDto[]>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(BaseResponse<OrderDto[]>), StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> GetByCustomerId(Guid customerId, CancellationToken ct)
         {
-            try
-            {
-                var result = await _service.DeleteAsync(id);
-
-                if (!result)
-                {
-                    _logger.LogError("Failed to remove order");
-                    return BadRequest("Failed to remove order");
-                }
-
-                _logger.LogInformation("Order removed");
-
-                return Ok("Order removed");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex.Message);
-                return BadRequest(ex.Message);
-            }
+            var response = await _service.GetByCustomerIdAsync(customerId, ct);
+            return ProcessResponse(response);
         }
     }
 }

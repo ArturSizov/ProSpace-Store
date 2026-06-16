@@ -61,20 +61,65 @@ namespace ProSpace.Application.Properties {
         }
         
         /// <summary>
-        ///   Ищет локализованную строку, похожую на Format error. Parville format: 1111-1111.
+        ///   Ищет локализованную строку, похожую на Buyer ID (Id) is required to update..
         /// </summary>
-        internal static string FormatErrorCustomerCode {
+        internal static string BuyerIDRequiredToUpdate {
             get {
-                return ResourceManager.GetString("FormatErrorCustomerCode", resourceCulture);
+                return ResourceManager.GetString("BuyerIDRequiredToUpdate", resourceCulture);
             }
         }
         
         /// <summary>
-        ///   Ищет локализованную строку, похожую на Format error. Parville format: 11-1111-SD11.
+        ///   Ищет локализованную строку, похожую на Category.
         /// </summary>
-        internal static string FormatErrorItemCode {
+        internal static string Category {
             get {
-                return ResourceManager.GetString("FormatErrorItemCode", resourceCulture);
+                return ResourceManager.GetString("Category", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Ищет локализованную строку, похожую на &apos;{PropertyName}&apos; is not a valid code format. The valid format is &apos;{ExpectedFormat}&apos;. You entered: &apos;{PropertyValue}&apos;.
+        /// </summary>
+        internal static string CodeFormatError {
+            get {
+                return ResourceManager.GetString("CodeFormatError", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Ищет локализованную строку, похожую на Discount.
+        /// </summary>
+        internal static string Discount {
+            get {
+                return ResourceManager.GetString("Discount", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Ищет локализованную строку, похожую на &apos;{PropertyName}&apos; cannot exceed 100%.
+        /// </summary>
+        internal static string DiscountCannotExceed100 {
+            get {
+                return ResourceManager.GetString("DiscountCannotExceed100", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Ищет локализованную строку, похожую на Product code.
+        /// </summary>
+        internal static string ProductaCode {
+            get {
+                return ResourceManager.GetString("ProductaCode", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Ищет локализованную строку, похожую на User code.
+        /// </summary>
+        internal static string UserCode {
+            get {
+                return ResourceManager.GetString("UserCode", resourceCulture);
             }
         }
     }

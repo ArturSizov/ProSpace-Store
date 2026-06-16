@@ -13,7 +13,8 @@ namespace ProSpace.Infrastructure.Mappers
             Name = model.Name,
             Code = model.Code,
             Discount = model.Discount,
-            Address = model.Address
+            Address = model.Address,
+            AppUserId = model.AppUserId
         };
 
 
@@ -23,7 +24,8 @@ namespace ProSpace.Infrastructure.Mappers
            Address = entity.Address,
            Code = entity.Code,
            Discount = entity.Discount,
-           Name = entity.Name
+           Name = entity.Name,
+           AppUserId = entity.AppUserId
         };
     }
 }

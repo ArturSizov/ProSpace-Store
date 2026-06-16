@@ -1,4 +1,5 @@
-﻿using ProSpace.Domain.Interfaces.Repositories;
+﻿using Microsoft.EntityFrameworkCore;
+using ProSpace.Application.Interfaces.Repositories;
 
 namespace ProSpace.Infrastructure
 {
@@ -26,9 +27,11 @@ namespace ProSpace.Infrastructure
         /// </summary>
         /// <param name="dataContext"></param>
         /// <param name="itemsRepository"></param>
-        public UnitOfWork(ProSpaceDbContext dataContext, IItemsRepository itemsRepository, 
+        public UnitOfWork(ProSpaceDbContext dataContext, 
+            IItemsRepository itemsRepository, 
             IOrderItemsRepository orderItemsRepository, 
-            IOrdersRepository ordersRepository, ICustomersRepository customersRepository)
+            IOrdersRepository ordersRepository, 
+            ICustomersRepository customersRepository)
         {
             _dataContext = dataContext;
 
@@ -39,16 +42,12 @@ namespace ProSpace.Infrastructure
         }
 
         /// <inheritdoc/>
-        public async Task<bool> CompleteAsync()
+        public async Task<bool> CompleteAsync(CancellationToken cancellation = default)
         {
-            try
-            {
-                return await _dataContext.SaveChangesAsync() > 0;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
+            if (!_dataContext.ChangeTracker.HasChanges())
+                return true;
+
+            return await _dataContext.SaveChangesAsync(cancellation) > 0;
         }
     }
 }

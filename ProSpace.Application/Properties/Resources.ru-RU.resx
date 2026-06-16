@@ -117,10 +117,25 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="FormatErrorCustomerCode" xml:space="preserve">
-    <value>Ошибка формата. Парвильный формат: 1111-1111</value>
+  <data name="BuyerIDRequiredToUpdate" xml:space="preserve">
+    <value>Идентификатор покупателя (Id) обязателен для обновления.</value>
   </data>
-  <data name="FormatErrorItemCode" xml:space="preserve">
-    <value>Ошибка формата. Парвильный формат: 11-1111-SD11</value>
+  <data name="DiscountCannotExceed100" xml:space="preserve">
+    <value>'{PropertyName}' не может превышать 100%</value>
+  </data>
+  <data name="CodeFormatError" xml:space="preserve">
+    <value>'{PropertyName}' недопустимый формат кода. Допустимый формат '{ExpectedFormat}'. Вы ввели: '{PropertyValue}'</value>
+  </data>
+  <data name="UserCode" xml:space="preserve">
+    <value>Код пользователя</value>
+  </data>
+  <data name="ProductaCode" xml:space="preserve">
+    <value>Код продукта</value>
+  </data>
+  <data name="Discount" xml:space="preserve">
+    <value>Скидка</value>
+  </data>
+  <data name="Category" xml:space="preserve">
+    <value>Категория</value>
   </data>
 </root>

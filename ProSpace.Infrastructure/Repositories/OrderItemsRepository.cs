@@ -1,8 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using ProSpace.Infrastructure.Mappers;
-using ProSpace.Domain.Interfaces.Repositories;
+using ProSpace.Application.Interfaces.Repositories;
 using ProSpace.Domain.Models;
+using ProSpace.Infrastructure.Mappers;
 
 namespace ProSpace.Infrastructure.Repositories
 {
@@ -33,81 +33,67 @@ namespace ProSpace.Infrastructure.Repositories
         }
 
         /// <inheritdoc/>
-        public async Task<(OrderItemModel?, IDictionary<string, string[]>?)> CreateAsync(OrderItemModel entity, CancellationToken cancellationToken = default)
+        public async Task CreateAsync(OrderItemModel order, CancellationToken cancellationToken = default)
         {
             try
             {
-                var orderItem = entity.ToEntity();
+                var entity = order.ToEntity();
 
-                var result = await _dbContext.OrderItems.AddAsync(orderItem, cancellationToken);
+                await _dbContext.OrderItems.AddAsync(entity, cancellationToken);
 
-                var saved = await _dbContext.SaveChangesAsync(cancellationToken);
-
-                if (saved > 0)
-                    return (result.Entity.ToModel(), null);
-
-                return (null, null);
+                _logger.LogInformation("Order item {Id} attached to the context for creation", order.Id);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Cannot create an order item");
-                 throw new Exception(ex.Message);
+                _logger.LogError(ex, "Critical error adding order item {Id} to DB context", order.Id);
+                throw;
             }
         }
 
         /// <inheritdoc/>
-        public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+        public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
         {
             try
             {
-                var found = await _dbContext.OrderItems.FindAsync([id], cancellationToken);
+                var found = await _dbContext.OrderItems
+                         .AsNoTracking()
+                         .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+
                 if (found == null)
                 {
-                    _logger.LogWarning("Cannot find order item with id = {id}", id);
-                    return false;
+                    _logger.LogWarning("Delete failed. Order item with ID {Id} not found", id);
+                    throw new KeyNotFoundException($"Order item with id = {id} was not found.");
                 }
 
-                _ = _dbContext.OrderItems.Remove(found);
-
-                var saved = await _dbContext.SaveChangesAsync(cancellationToken);
-
-                return saved > 0;
+                _dbContext.OrderItems.Remove(found);
+                _logger.LogInformation("Order item with ID {Id} marked for deletion in memory context", id);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not KeyNotFoundException)
             {
-                _logger.LogError(ex, "Cannot delete order item");
-                return false;
+                _logger.LogError(ex, "Critical error deleting order item {Id} in DB context", id);
+                throw;
             }
         }
 
         /// <inheritdoc/>
-        public async Task<OrderItemModel[]?> GetOrderItemsByOrderIdAsync(Guid orderId, CancellationToken cancellationToken = default)
+        public async Task<OrderItemModel[]> ReadAllAsync(CancellationToken cancellationToken = default)
         {
             try
             {
-                var orderItems = await _dbContext.OrderItems.Where(x => x.OrderId == orderId).ToListAsync();
+                var orders = await _dbContext.OrderItems
+                          .AsNoTracking()
+                          .Select(o => o.ToModel())
+                          .ToArrayAsync(cancellationToken);
 
-                return orderItems.Select(x => x.ToModel()).ToArray(); ;
+                _logger.LogInformation("Total order items loaded: {Length}", orders.Length);
+
+                return orders;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Cannot read item orders by id");
-                return null;
-            }
-        }
+                _logger.LogError(ex, "Error reading list of all order items from database");
 
-        /// <inheritdoc/>
-        public async Task<OrderItemModel[]?> ReadAllAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                var items = await _dbContext.OrderItems.ToArrayAsync();
-                return items.Select(x => x.ToModel()).ToArray();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Cannot read all item orders");
-                return null;
+                throw;
             }
         }
 
@@ -116,10 +102,13 @@ namespace ProSpace.Infrastructure.Repositories
         {
             try
             {
-                var found = await _dbContext.OrderItems.FindAsync([id], cancellationToken);
+                var found = await _dbContext.OrderItems
+                         .AsNoTracking()
+                         .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+
                 if (found == null)
                 {
-                    _logger.LogWarning("Cannot find order item with id = {id}", id);
+                    _logger.LogWarning("Cannot find order items with id = {id}", id);
                     return null;
                 }
 
@@ -127,44 +116,45 @@ namespace ProSpace.Infrastructure.Repositories
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Cannot find order item");
-                return null;
+                _logger.LogError(ex, "Critical error reading order items {Id} in DB context", id);
+                throw;
             }
         }
 
         /// <inheritdoc/>
-        public async Task<OrderItemModel?> UpdateAsync(OrderItemModel entity, CancellationToken cancellationToken = default)
+        public async Task UpdateAsync(OrderItemModel order, CancellationToken cancellationToken = default)
+        {
+            var found = await _dbContext.OrderItems.FindAsync([order.Id], cancellationToken)
+                ?? throw new KeyNotFoundException($"Order with id = {order.Id} not found.");
+
+            found.ItemPrice = order.ItemPrice;
+            found.ItemId = order.ItemId;
+            found.OrderId = order.OrderId;
+            found.ItemsCount = order.ItemsCount;
+        }
+
+        /// <inheritdoc/>
+        public async Task<OrderItemModel[]?> GetOrderItemsByOrderIdAsync(Guid orderId, CancellationToken cancellationToken = default)
         {
             try
             {
-                var found = await _dbContext.OrderItems.FindAsync([entity.Id], cancellationToken);
-                if (found == null)
-                {
-                    _logger.LogWarning("Cannot find order item with id = {id}", entity.Id);
-                    return null;
-                }
+                var orders = await _dbContext.OrderItems
+                 .AsNoTracking()
+                 .Where(o => o.OrderId == orderId)
+                 .Select(o => o.ToModel())
+                 .ToArrayAsync(cancellationToken);
 
-                found.OrderId = entity.OrderId;
-                found.ItemId = entity.ItemId;
-                found.ItemsCount = entity.ItemsCount;
-                found.ItemPrice = entity.ItemPrice;
+                _logger.LogInformation("Total order items loaded for order id {OrderId}: {Length}", orderId, orders.Length);
 
-                _ = _dbContext.OrderItems.Update(found);
-
-                var saved = await _dbContext.SaveChangesAsync(cancellationToken);
-                if (saved > 0)
-                    return found.ToModel();
-
-                _logger.LogError("Cannot save the updated data");
-                return null;
+                return orders;
             }
-
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Cannot update item");
-                return null;
+                _logger.LogError(ex, "Error reading order items for customer code {OrderId}", orderId);
+                throw;
+
+                throw;
             }
         }
-
     }
 }

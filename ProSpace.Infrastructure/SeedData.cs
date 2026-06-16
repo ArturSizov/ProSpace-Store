@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using ProSpace.Infrastructure.Entites.Supply;
 using ProSpace.Infrastructure.Entites.Users;
-using ProSpace.Domain.Interfaces.Repositories;
+using ProSpace.Application.Interfaces.Repositories;
 using ProSpace.Domain.Models;
 
 namespace ProSpace.Infrastructure
