@@ -33,7 +33,7 @@ namespace ProSpace.Application.Interfaces.Services
         /// WARNING: As the product catalog grows, this method should be replaced 
         /// with a paginated approach to prevent high memory consumption and slow database response times.
         /// </remarks>
-        Task<BaseResponse<ItemDto[]>> ReadAllAsync(CancellationToken cancellationToken = default);
+        Task<BaseResponse<IEnumerable<ItemDto>>> ReadAllAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Updates the details of an existing catalog item.

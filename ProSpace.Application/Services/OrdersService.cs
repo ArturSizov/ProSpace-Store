@@ -3,8 +3,10 @@ using Microsoft.Extensions.Logging;
 using ProSpace.Application.Interfaces.Repositories;
 using ProSpace.Application.Interfaces.Services;
 using ProSpace.Application.Mappers;
-using ProSpace.Contracts.DTO;
+using ProSpace.Contracts.DTO.Order;
 using ProSpace.Contracts.Responses;
+using ProSpace.Domain.Models;
+using System.Net.Http.Headers;
 
 namespace ProSpace.Application.Services
 {
@@ -18,12 +20,18 @@ namespace ProSpace.Application.Services
         /// <summary>
         /// Item validation service
         /// </summary>
-        private readonly IValidator<CreateOrderDto> _validation;
+        private readonly IValidator<OrderDto> _validation;
 
         /// <summary>
         /// Unit of Work
         /// </summary>
         private readonly IUnitOfWork _unitOfWork;
+
+
+        /// <summary>
+        /// Security service
+        /// </summary>
+        private readonly ISecurityService _securityService;
 
         /// <summary>
         /// Ctor
@@ -31,103 +39,184 @@ namespace ProSpace.Application.Services
         /// <param name="logger"></param>
         /// <param name="validation"></param>
         /// <param name="unitOfWork"></param>
-        public OrdersService(ILogger<OrdersService> logger, IValidator<CreateOrderDto> validation, IUnitOfWork unitOfWork)
+        public OrdersService(ILogger<OrdersService> logger, IValidator<OrderDto> validation, IUnitOfWork unitOfWork, ISecurityService securityService)
         {
             _logger = logger;
             _validation = validation;
             _unitOfWork = unitOfWork;
+            _securityService = securityService;
         }
 
         /// <inheritdoc/>
-        public async Task<BaseIdResponse> CreateAsync(CreateOrderDto order, CancellationToken cancellationToken = default)
+        public async Task<BaseIdResponse> CreateAsync(Guid customerId, CancellationToken cancellationToken = default)
         {
             try
             {
-                var validate = await _validation.ValidateAsync(order, cancellationToken);
+                _logger.LogInformation("Processing business logic authorization parameters for a new order instantiation flow.");
 
-                if (!validate.IsValid)
+                Guid finalCustomerId;
+
+                if (!_securityService.IsManager())
                 {
-                    var errors = validate.Errors.Select(e => e.ErrorMessage);
-                    _logger.LogInformation("Validation error when creating an order: {Errors}", errors);
-                    return BaseIdResponse.Failure(errors);
+                    Guid? authenticatedCustomerId = await _securityService.GetCurrentCustomerIdAsync(cancellationToken);
+
+                    if (authenticatedCustomerId == null || authenticatedCustomerId == Guid.Empty)
+                    {
+                        _logger.LogWarning("Order creation blocked. Active identity user does not possess an instantiated Customer profile context mapping.");
+                        return BaseIdResponse.Failure("Access denied. Customer profile not registered.");
+                    }
+
+                    finalCustomerId = authenticatedCustomerId.Value;
+                }
+                else
+                {
+                    var targetCustomerExists = await _unitOfWork.CustomersRepository.ReadAsync(customerId, cancellationToken);
+
+                    if (targetCustomerExists == null)
+                    {
+                        _logger.LogWarning("Manager requested order creation for a non-existent Customer ID reference: {Id}", customerId);
+                        return BaseIdResponse.Failure($"The designated customer with ID {customerId} does not exist inside our system registries.");
+                    }
+
+                    finalCustomerId = customerId;
                 }
 
-                var domainOrder = order.ToDomainEntity();
+                int maxNumber = await _unitOfWork.OrdersRepository.GetMaxOrderNumberAsync(cancellationToken);
+
+                var domainOrder = new OrderModel
+                {
+                    Id = Guid.NewGuid(),
+                    CustomerId = finalCustomerId,
+                    OrderDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                    OrderNumber = maxNumber + 1,
+                    ShipmentDate = null,
+                    Status = "New"
+                };
 
                 await _unitOfWork.OrdersRepository.CreateAsync(domainOrder, cancellationToken);
 
                 if (!await _unitOfWork.CompleteAsync(cancellationToken))
                 {
-                    _logger.LogError("Failed to save order to database during UnitOfWork complete. Order ID: {Id}", domainOrder.Id);
-                    return BaseIdResponse.Failure("Failed to save the order to the database.");
+                    _logger.LogError("Database unit of work flush sequence failed during order initialization for Customer: {Id}", finalCustomerId);
+                    return BaseIdResponse.Failure("Failed to save the new order profile due to an underlying infrastructure storage exception.");
                 }
 
-                _logger.LogInformation("Order with ID {Id} has been successfully created.", domainOrder.Id);
+                _logger.LogInformation("Order {Id} (Serial Number: {Num}) has been successfully created and saved for Customer {CustId}.",
+                    domainOrder.Id, domainOrder.OrderNumber, finalCustomerId);
 
                 return BaseIdResponse.Success(domainOrder.Id);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Critical error while creating order with ID: {Id}", order.OrderNumber);
-                return BaseIdResponse.Failure("An internal server error occurred while creating the order.");
+                _logger.LogError(ex, "Critical error while creating order with requested runtime tracking reference ID: {Id}", customerId);
+                return BaseIdResponse.Failure("An internal server error occurred while processing the order initialization workflows loops.");
             }
         }
-
 
         /// <inheritdoc/>
         public async Task<BaseIdResponse> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
         {
             try
             {
-                var item = await _unitOfWork.OrdersRepository.ReadAsync(id, cancellationToken);
+                _logger.LogInformation("Initiating comprehensive order extraction sequence for tracking key target: {Id}", id);
 
-                if (item == null)
+                var orderItem = await _unitOfWork.OrdersRepository.ReadAsync(id, cancellationToken);
+
+                if (orderItem == null)
                 {
-                    _logger.LogWarning("Order with ID {Id} not found for deletion.", id);
-                    return BaseIdResponse.Failure($"Order with ID {id} not found.");
+                    _logger.LogWarning("Extraction operation suspended. Order record with ID {Id} was not located.", id);
+                    return BaseIdResponse.Failure($"Order with ID {id} not found inside the system registers.");
+                }
+
+                var (isSuccess, error) = await _securityService.ValidateOrderOwnershipAsync(orderItem.CustomerId);
+
+                if (!isSuccess)
+                {
+                    _logger.LogCritical("Security enforcement blocked an unauthorized extraction trace payload for Order ID: {Id}", id);
+                    return BaseIdResponse.Failure(error);
+                }
+
+                if (!_securityService.IsManager())
+                {
+                    if (orderItem.Status != "New")
+                    {
+                        _logger.LogWarning("Deletion rejected. Customer attempted to delete Order {Id} with active status: {Status}",
+                            id, orderItem.Status);
+                        return BaseIdResponse.Failure("Access denied. Only new unfulfilled orders can be deleted from your personal account.");
+                    }
+                }
+
+                var cascadingOrderItems = await _unitOfWork.OrderItemsRepository.GetOrderItemsByOrderIdAsync(id, cancellationToken);
+
+                if (cascadingOrderItems != null && cascadingOrderItems.Any())
+                {
+                    _logger.LogInformation("Found {Count} nested order line item rows. Purging cascaded sub-components for Order: {Id}", cascadingOrderItems.Count(), id);
+
+                    foreach (var lineItem in cascadingOrderItems)
+                    {
+                        await _unitOfWork.OrderItemsRepository.DeleteAsync(lineItem.Id, cancellationToken);
+                    }
                 }
 
                 await _unitOfWork.OrdersRepository.DeleteAsync(id, cancellationToken);
 
                 if (!await _unitOfWork.CompleteAsync(cancellationToken))
                 {
-                    _logger.LogError("Failed to commit order {Id} deletion to database during UnitOfWork complete.", id);
-                    return BaseIdResponse.Failure("Failed to complete order deletion in database.");
+                    _logger.LogError("Database unit of work flush sequence failed. Cascade execution halted for order extraction sequence: {Id}", id);
+                    return BaseIdResponse.Failure("Failed to complete full atomic order profile deletion in persistent storage contexts.");
                 }
 
-                _logger.LogInformation("Order with ID {Id} has been completely deleted from the database", id);
+                _logger.LogInformation("Multi-tier deletion workflow finalized successfully. Order header {Id} and all nested line items wiped entirely.", id);
                 return BaseIdResponse.Success(id);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during complete deletion of order {Id}", id);
-                return BaseIdResponse.Failure("Failed to delete order");
+                _logger.LogCritical(ex, "A critical unhandled execution exception crashed the multi-tier order deletion pipeline for target ID: {Id}", id);
+                return BaseIdResponse.Failure("A critical server exception tracking error occurred during order profile extraction loops.");
             }
         }
 
         /// <inheritdoc/>
-        public async Task<BaseResponse<OrderDto[]>> ReadAllAsync(CancellationToken cancellationToken = default)
+        public async Task<BaseResponse<IEnumerable<OrderDto>>> ReadAllAsync(CancellationToken cancellationToken = default)
         {
             try
             {
-                var domainOrders = await _unitOfWork.OrdersRepository.ReadAllAsync(cancellationToken);
+                _logger.LogInformation("Initiating secure global collection scan for orders architecture data layer.");
 
-                if (domainOrders == null || domainOrders.Length == 0)
+                if (_securityService.IsManager())
                 {
-                    _logger.LogInformation("No orders found in the database.");
-                    return BaseResponse<OrderDto[]>.Success([]);
+                    _logger.LogInformation("Manager privileges verified successfully. Extracting full system global orders log ledger.");
+
+                    var allOrdersList = await _unitOfWork.OrdersRepository.ReadAllAsync(cancellationToken);
+                    var allOrderDtosCollection = allOrdersList?.Select(order => order.ToDto()) ?? [];
+
+                    return BaseResponse<IEnumerable<OrderDto>>.Success(allOrderDtosCollection);
                 }
 
-                _logger.LogInformation("Total orders found: {Count}", domainOrders.Length);
+                var authenticatedCustomerId = await _securityService.GetCurrentCustomerIdAsync(cancellationToken);
 
-                var dtos = domainOrders.Select(x => x.ToDto()).ToArray();
+                if (authenticatedCustomerId == null || authenticatedCustomerId == Guid.Empty)
+                {
+                    _logger.LogWarning("Orders compilation terminated. Active user does not possess an initialized Customer profile context mapping.");
 
-                return BaseResponse<OrderDto[]>.Success(dtos);
+                    return BaseResponse<IEnumerable<OrderDto>>.Success([]);
+                }
+
+                _logger.LogInformation("Standard customer account verified. Executing isolated database query for Customer ID: {CustomerId}", authenticatedCustomerId);
+
+                var customerSpecificOrdersList = await _unitOfWork.OrdersRepository.GetByCustomerIdAsync(authenticatedCustomerId.Value, cancellationToken);
+
+                var filteredCustomerOrderDtos = customerSpecificOrdersList?.Select(order => order.ToDto()) ?? [];
+
+                _logger.LogInformation("Successfully compiled safe isolated orders ledger sequence for Customer profile: {CustomerId}. Total loaded: {Count}",
+                    authenticatedCustomerId, filteredCustomerOrderDtos.Count());
+
+                return BaseResponse<IEnumerable<OrderDto>>.Success(filteredCustomerOrderDtos);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error reading list of all orders.");
-                return BaseResponse<OrderDto[]>.Failure("Failed to load order list.");
+                _logger.LogError(ex, "An unhandled exception structural framework crash disrupted the global orders resolution pipeline execution loops.");
+                return BaseResponse<IEnumerable<OrderDto>>.Failure("An internal server error occurred while compiling your orders history records context.");
             }
         }
 
@@ -136,12 +225,36 @@ namespace ProSpace.Application.Services
         {
             try
             {
+                _logger.LogInformation("The process of reading the Order by ID has begun.");
+
+                if (_securityService.IsManager())
+                {
+                    var fullOrder = await _unitOfWork.OrdersRepository.ReadAsync(id, cancellationToken);
+
+                    if (fullOrder == null)
+                    {
+                        _logger.LogWarning("Order with ID {Id} not found.", id);
+                        return BaseResponse<OrderDto>.Failure($"Order with ID {id} not found.");
+                    }
+
+                    return BaseResponse<OrderDto>.Success(fullOrder.ToDto());
+                }
+
+                var authenticatedCustomerId = await _securityService.GetCurrentCustomerIdAsync(cancellationToken);
+
+                if (authenticatedCustomerId == null || authenticatedCustomerId == Guid.Empty)
+                {
+                    _logger.LogWarning("Order compilation terminated. Active user does not possess an initialized Customer profile context mapping.");
+                    return BaseResponse<OrderDto>.Failure("Access denied. Customer profile not registered.");
+                }
+
+                _logger.LogInformation("Standard customer account verified. Executing isolated database query for Order ID: {OrderId} and Customer ID: {CustomerId}", id, authenticatedCustomerId);
+
                 var order = await _unitOfWork.OrdersRepository.ReadAsync(id, cancellationToken);
 
-                if (order == null)
+                if (order == null || order.CustomerId != authenticatedCustomerId.Value)
                 {
-                    _logger.LogWarning("Order with ID {Id} not found.", id);
-
+                    _logger.LogWarning("Order with ID: {Id} was not found or access denied for Customer: {CustomerId}.", id, authenticatedCustomerId);
                     return BaseResponse<OrderDto>.Failure($"Order with ID {id} not found.");
                 }
 
@@ -159,98 +272,138 @@ namespace ProSpace.Application.Services
         }
 
         /// <inheritdoc/>
-        public async Task<BaseResponse<OrderDto>> UpdateAsync(OrderDto order, CancellationToken cancellationToken = default)
+        public async Task<BaseResponse<OrderDto>> UpdateAsync(UpdateOrderDto order, CancellationToken cancellationToken = default)
         {
             try
             {
-                var validate = await _validation.ValidateAsync(order.ToCreateItemDto(), cancellationToken);
-
-                if (!validate.IsValid)
-                {
-                    var errors = validate.Errors.Select(e => e.ErrorMessage);
-                    _logger.LogInformation("Validation error when updating order {Id}: {Errors}", order.Id, errors);
-                    return BaseResponse<OrderDto>.Failure(errors);
-                }
+                _logger.LogInformation("Processing administrative updates configuration for order target: {Id}", order.Id);
 
                 var existingOrder = await _unitOfWork.OrdersRepository.ReadAsync(order.Id, cancellationToken);
 
                 if (existingOrder == null)
                 {
-                    _logger.LogWarning("Failed to update order. Order with ID {Id} not found.", order.Id);
+                    _logger.LogWarning("Modification halted. Order with tracking ID {Id} was not located inside registers.", order.Id);
                     return BaseResponse<OrderDto>.Failure($"Order with ID {order.Id} not found.");
                 }
 
-                existingOrder.OrderNumber = order.OrderNumber;
-                existingOrder.OrderDate = order.OrderDate;
+                var parentCustomer = await _unitOfWork.CustomersRepository.ReadAsync(existingOrder.CustomerId, cancellationToken);
+
+                if (parentCustomer == null)
+                {
+                    _logger.LogError("Database integrity failure: Order {OrderId} points to a missing Customer profile {CustomerId}",
+                        existingOrder.Id, existingOrder.CustomerId);
+                    return BaseResponse<OrderDto>.Failure("Internal database reference consistency error.");
+                }
+
+                _logger.LogInformation("Manager account update validated for Order {Id}. Applying administrative properties overrides.", order.Id);
+
                 existingOrder.ShipmentDate = order.ShipmentDate;
                 existingOrder.Status = order.Status;
-                existingOrder.CustomerId = order.CustomerId;
+
+                await _unitOfWork.OrdersRepository.UpdateAsync(existingOrder, cancellationToken);
 
                 if (!await _unitOfWork.CompleteAsync(cancellationToken))
-                    _logger.LogWarning("No changes were saved for order item {Id} (data might be identical).", order.Id);
+                    _logger.LogWarning("No structural data changes were stored for order {Id} (data payload might be identical).", order.Id);
+                else
+                    _logger.LogInformation("Order {Id} state modification successfully written down to active databases.", existingOrder.Id);
 
 
-                _logger.LogInformation("Order item updated successfully: {Id}", existingOrder.Id);
-
-                var updatedDto = existingOrder.ToDto();
-                return BaseResponse<OrderDto>.Success(updatedDto);
+                return BaseResponse<OrderDto>.Success(existingOrder.ToDto());
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating order Id: {Id}", order.Id);
-                return BaseResponse<OrderDto>.Failure("Failed to update order due to an internal error.");
+                _logger.LogError(ex, "An unhandled execution lifecycle exception crashed order state synchronization for tracking ID: {Id}", order.Id);
+                return BaseResponse<OrderDto>.Failure("An internal service error occurred while processing the order update transaction.");
             }
         }
 
         /// <inheritdoc/>
-        public async Task<BaseResponse<OrderDto[]>> GetByCustomerCodeAsync(string customerCode, CancellationToken cancellationToken = default)
+        public async Task<BaseResponse<IEnumerable<OrderDto>>> GetByOrdersCustomerCodeAsync(string customerCode, CancellationToken cancellationToken = default)
         {
             try
             {
-                var domainOrders = await _unitOfWork.OrdersRepository.GetByCustomerCodeAsync(customerCode, cancellationToken);
+                _logger.LogInformation("The process of reading the Orders by customer code has begun.");
 
-                if (domainOrders == null || domainOrders.Length == 0)
+                if (_securityService.IsManager())
                 {
-                    _logger.LogInformation("No orders found in the database for customer code: {customerCode}", customerCode);
-                    return BaseResponse<OrderDto[]>.Success([]);
+                    var allOrdersList = await _unitOfWork.OrdersRepository.GetOrdersByCustomerCodeAsync(customerCode, null, cancellationToken);
+                    var allOrderDtosCollection = allOrdersList.Select(order => order.ToDto()).ToList();
+
+                    return BaseResponse<IEnumerable<OrderDto>>.Success(allOrderDtosCollection);
                 }
 
-                _logger.LogInformation("Total orders found for customer code: {customerCode}: {Count}", customerCode, domainOrders.Length);
+                var authenticatedCustomerId = await _securityService.GetCurrentCustomerIdAsync(cancellationToken);
 
-                var dtos = domainOrders.Select(x => x.ToDto()).ToArray();
+                if (authenticatedCustomerId == null || authenticatedCustomerId == Guid.Empty)
+                {
+                    _logger.LogWarning("Orders compilation terminated. Active user context mapping not found.");
+                    return BaseResponse<IEnumerable<OrderDto>>.Success([]);
+                }
 
-                return BaseResponse<OrderDto[]>.Success(dtos);
+                _logger.LogInformation("Standard customer account verified. Executing isolated database query for Customer Code: {CustomerCode}", customerCode);
+
+                var safeOrdersList = await _unitOfWork.OrdersRepository.GetOrdersByCustomerCodeAsync(
+                    customerCode,
+                    authenticatedCustomerId.Value,
+                    cancellationToken);
+
+                var filteredCustomerOrderDtos = safeOrdersList.Select(order => order.ToDto()).ToList();
+
+                return BaseResponse<IEnumerable<OrderDto>>.Success(filteredCustomerOrderDtos);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error reading orders list for customer code: {CustomerCode}", customerCode);
-                return BaseResponse<OrderDto[]>.Failure("Failed to load orders for the specified customer.");
+                return BaseResponse<IEnumerable<OrderDto>>.Failure("Failed to load orders for the specified customer.");
             }
         }
 
         /// <inheritdoc/>
-        public async Task<BaseResponse<OrderDto[]>> GetByCustomerIdAsync(Guid customerId, CancellationToken cancellationToken = default)
+        public async Task<BaseResponse<IEnumerable<OrderDto>>> GetByCustomersIdAsync(Guid customerId, CancellationToken cancellationToken = default)
         {
             try
             {
-                var domainOrders = await _unitOfWork.OrdersRepository.GetByCustomerIdAsync(customerId, cancellationToken);
+                _logger.LogInformation("The process of reading the Orders by customer ID has begun.");
 
-                if (domainOrders == null || domainOrders.Length == 0)
+                if (_securityService.IsManager())
                 {
-                    _logger.LogInformation("No orders found in the database for customer ID: {customerId}", customerId);
-                    return BaseResponse<OrderDto[]>.Success([]);
+                    var allOrdersList = await _unitOfWork.OrdersRepository.GetByCustomerIdAsync(customerId, cancellationToken);
+                    var allOrderDtosCollection = allOrdersList?.Select(order => order.ToDto()).ToList() ?? [];
+
+                    _logger.LogInformation("Manager query: Total orders found by user ID {Id}: {Count}", customerId, allOrderDtosCollection.Count);
+
+                    return BaseResponse<IEnumerable<OrderDto>>.Success(allOrderDtosCollection);
                 }
 
-                _logger.LogInformation("Total orders found for customer ID: {customerId}: {Count}", customerId, domainOrders.Length);
+                var authenticatedCustomerId = await _securityService.GetCurrentCustomerIdAsync(cancellationToken);
 
-                var dtos = domainOrders.Select(x => x.ToDto()).ToArray();
+                if (authenticatedCustomerId == null || authenticatedCustomerId == Guid.Empty)
+                {
+                    _logger.LogWarning("Orders compilation terminated. Active user context mapping not found.");
+                    return BaseResponse<IEnumerable<OrderDto>>.Success(Enumerable.Empty<OrderDto>());
+                }
 
-                return BaseResponse<OrderDto[]>.Success(dtos);
+                _logger.LogInformation("Standard customer account verified. Validating requested Customer ID: {CustomerId}", customerId);
+
+                if (authenticatedCustomerId.Value != customerId)
+                {
+                    _logger.LogWarning("Security Violation! Customer {AuthId} tried to access orders of Customer {RequestedId}",
+                        authenticatedCustomerId.Value, customerId);
+
+                    return BaseResponse<IEnumerable<OrderDto>>.Success(Enumerable.Empty<OrderDto>());
+                }
+
+                var ordersList = await _unitOfWork.OrdersRepository.GetByCustomerIdAsync(customerId, cancellationToken);
+                var customerOrders = ordersList?.Select(order => order.ToDto()).ToList() ?? [];
+
+                _logger.LogInformation("Total orders found for Customer ID {Id}: {Count}", customerId, customerOrders.Count);
+
+                return BaseResponse<IEnumerable<OrderDto>>.Success(customerOrders);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error reading orders list for customer ID: {CustomerId}", customerId);
-                return BaseResponse<OrderDto[]>.Failure("Failed to load orders for the specified customer.");
+                return BaseResponse<IEnumerable<OrderDto>>.Failure("Failed to load orders for the specified customer.");
             }
         }
 
@@ -259,24 +412,49 @@ namespace ProSpace.Application.Services
         {
             try
             {
+                _logger.LogInformation("The process of reading the Order by order number has begun.");
+
+                if (_securityService.IsManager())
+                {
+                    var fullOrder = await _unitOfWork.OrdersRepository.GetByOrderNumberAsync(orderNumber, cancellationToken);
+
+                    if (fullOrder == null)
+                    {
+                        _logger.LogWarning("Order with number {Number} not found.", orderNumber);
+                        return BaseResponse<OrderDto>.Failure($"Order with number {orderNumber} not found.");
+                    }
+
+                    return BaseResponse<OrderDto>.Success(fullOrder.ToDto());
+                }
+
+                var authenticatedCustomerId = await _securityService.GetCurrentCustomerIdAsync(cancellationToken);
+
+                if (authenticatedCustomerId == null || authenticatedCustomerId == Guid.Empty)
+                {
+                    _logger.LogWarning("Order compilation terminated. Active user does not possess an initialized Customer profile context mapping.");
+                    return BaseResponse<OrderDto>.Failure("Access denied. Customer profile not registered.");
+                }
+
+                _logger.LogInformation("Standard customer account verified. Executing isolated database query for Order Number: {OrderNumber} and Customer ID: {CustomerId}",
+                    orderNumber, authenticatedCustomerId.Value);
+
                 var order = await _unitOfWork.OrdersRepository.GetByOrderNumberAsync(orderNumber, cancellationToken);
 
-                if (order == null)
+                if (order == null || order.CustomerId != authenticatedCustomerId.Value)
                 {
-                    _logger.LogWarning("Order with number {orderNumber} not found.", orderNumber);
-
+                    _logger.LogWarning("Order with number: {Number} was not found or access denied for Customer: {CustomerId}.", orderNumber, authenticatedCustomerId.Value);
                     return BaseResponse<OrderDto>.Failure($"Order with number {orderNumber} not found.");
                 }
 
                 var orderDto = order.ToDto();
 
-                _logger.LogInformation("Order loaded successfully: {OrderNumber}", orderDto.OrderNumber);
+                _logger.LogInformation("Order loaded successfully: {Number}", orderDto.OrderNumber);
 
                 return BaseResponse<OrderDto>.Success(orderDto);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error searching for order by number: {Number}", orderNumber);
+                _logger.LogError(ex, "Error searching for order by order number: {Number}", orderNumber);
                 return BaseResponse<OrderDto>.Failure("Unable to search for order due to an internal error.");
             }
         }

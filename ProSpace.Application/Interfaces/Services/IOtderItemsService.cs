@@ -14,7 +14,7 @@ namespace ProSpace.Application.Interfaces.Services
         /// <param name="orderItem">The data transfer object containing the order item details, including Quantity and Price.</param>
         /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
         /// <returns>A <see cref="BaseIdResponse"/> containing the operation status and the generated ID of the new order item.</returns>
-        Task<BaseIdResponse> CreateAsync(CreateOrderItemDto orderItem, CancellationToken cancellationToken = default);
+        Task<BaseIdResponse> CreateAsync(OrderItemDto orderItem, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Retrieves a specific order item by its unique identifier.
@@ -30,10 +30,7 @@ namespace ProSpace.Application.Interfaces.Services
         /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
         /// <returns>A <see cref="BaseResponse{OrderItemDto}"/> containing the collection of all order items within the Items field.</returns>
         /// <remarks>
-        /// WARNING: This method retrieves every order line across all orders. For targeted queries, 
-        /// use <see cref="GetOrderItemsByOrderIdAsync"/> instead to prevent excessive database load.
-        /// </remarks>
-        Task<BaseResponse<OrderItemDto[]>> ReadAllAsync(CancellationToken cancellationToken = default);
+        Task<BaseResponse<IEnumerable<OrderItemDto>>> ReadAllAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Updates the details (such as quantity or price) of an existing order item.
@@ -57,6 +54,6 @@ namespace ProSpace.Application.Interfaces.Services
         /// <param name="orderId">The unique identifier (GUID) of the parent order.</param>
         /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
         /// <returns>A <see cref="BaseResponse{OrderItemDto}"/> containing the array of order items within the Data field.</returns>
-        Task<BaseResponse<OrderItemDto[]>> GetOrderItemsByOrderIdAsync(Guid orderId, CancellationToken cancellationToken = default);
+        Task<BaseResponse<IEnumerable<OrderItemDto>>> GetOrderItemsByOrderIdAsync(Guid orderId, CancellationToken cancellationToken = default);
     }
 }

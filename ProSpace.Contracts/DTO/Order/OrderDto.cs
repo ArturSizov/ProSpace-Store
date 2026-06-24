@@ -1,7 +1,8 @@
-﻿namespace ProSpace.Contracts.DTO
+﻿namespace ProSpace.Contracts.DTO.Order
 {
-    public class CreateOrderDto
+    public class OrderDto
     {
+        public Guid Id { get; set; }
         public Guid CustomerId { get; set; }
         public DateOnly OrderDate { get; set; }
         public DateOnly? ShipmentDate { get; set; }

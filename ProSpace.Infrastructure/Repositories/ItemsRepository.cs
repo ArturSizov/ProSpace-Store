@@ -34,15 +34,17 @@ namespace ProSpace.Infrastructure.Repositories
         {
             try
             {
+                _logger.LogInformation("Initiating database insertion sequence for a new product Item entity record: {Id}", item.Id);
+
                 var entity = item.ToEntity();
 
                 await _dbContext.Items.AddAsync(entity, cancellationToken);
 
-                _logger.LogInformation("Item {Id} attached to the context for creation", item.Id);
+                _logger.LogInformation("Product item {Id} successfully attached to the database memory context. Awaiting transaction commit.", item.Id);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Critical error adding item {Id} to DB context", item.Id);
+                _logger.LogError(ex, "Critical database layer disruption encountered while adding a new product Item to DB context for ID: {Id}", item.Id);
                 throw;
             }
         }
@@ -52,21 +54,23 @@ namespace ProSpace.Infrastructure.Repositories
         {
             try
             {
-                var found = await _dbContext.Items
-                         .AsNoTracking()
-                         .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+                _logger.LogInformation("Scanning database schema for single product item record matching tracking identity: {Id}", id);
 
-                if (found == null)
+                var foundEntity = await _dbContext.Items
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+
+                if (foundEntity == null)
                 {
-                    _logger.LogWarning("Cannot find items with id = {id}", id);
+                    _logger.LogInformation("No single product item record matches the requested database tracking identifier: {Id}", id);
                     return null;
                 }
 
-                return found.ToModel();
+                return foundEntity.ToModel();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Critical error reading item {Id} in DB context", id);
+                _logger.LogError(ex, "Critical database layer disruption encountered while reading single product item for tracking identity: {Id}", id);
                 throw;
             }
         }
@@ -74,13 +78,36 @@ namespace ProSpace.Infrastructure.Repositories
         /// <inheritdoc/>
         public async Task UpdateAsync(ItemModel item, CancellationToken cancellationToken = default)
         {
-            var found = await _dbContext.Items.FindAsync([item.Id], cancellationToken)
-            ?? throw new KeyNotFoundException($"Item with id = {item.Id} not found.");
+            try
+            {
+                _logger.LogInformation("Attempting to locate and update persistent state parameters for item: {Id}", item.Id);
 
-            found.Name = item.Name;
-            found.Code = item.Code;
-            found.Price = item.Price;
-            found.Category = item.Category;
+                var foundEntity = await _dbContext.Items.FindAsync([item.Id], cancellationToken);
+
+                if (foundEntity == null)
+                {
+                    _logger.LogWarning("Data modification aborted. Item with tracking ID {Id} was not found inside registers.", item.Id);
+                    throw new KeyNotFoundException($"Item with id = {item.Id} not found in the persistent storage context.");
+                }
+
+                foundEntity.Name = item.Name;
+                foundEntity.Code = item.Code;
+                foundEntity.Price = item.Price;
+                foundEntity.Category = item.Category;
+
+                _dbContext.Items.Update(foundEntity);
+
+                _logger.LogInformation("Item {Id} parameters successfully synchronized in-memory. Awaiting transaction commit.", item.Id);
+            }
+            catch (KeyNotFoundException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Critical database layer disruption encountered while updating state parameters for Item: {Id}", item.Id);
+                throw;
+            }
         }
 
         /// <inheritdoc/>
@@ -88,39 +115,51 @@ namespace ProSpace.Infrastructure.Repositories
         {
             try
             {
-                var found = await _dbContext.Items.FindAsync([id], cancellationToken);
+                _logger.LogInformation("Attempting to locate and extract item profile for permanent removal: {Id}", id);
 
-                if (found != null)
+                var foundEntity = await _dbContext.Items
+                    .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+
+                if (foundEntity == null)
                 {
-                    _dbContext.Items.Remove(found);
-                    _logger.LogInformation("Item with ID {CustomerId} marked for deletion", id);
+                    _logger.LogWarning("Extraction operation aborted. Item with identity tracking token {Id} was not located.", id);
+                    throw new KeyNotFoundException($"item with id = {id} was not found in the persistent storage context.");
                 }
+
+                _dbContext.Items.Remove(foundEntity);
+                _logger.LogInformation("item with ID {Id} successfully marked for removal in memory context. Awaiting commit.", id);
+            }
+            catch (KeyNotFoundException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Critical error deleting item {Id} in DB context: {Message}", id, ex.Message);
+                _logger.LogError(ex, "Critical database layer disruption encountered while executing item destruction sequence for ID: {Id}", id);
                 throw;
             }
         }
 
         /// <inheritdoc/>
-        public async Task<ItemModel[]> ReadAllAsync(CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<ItemModel>> ReadAllAsync(CancellationToken cancellationToken = default)
         {
             try
             {
-                var items = await _dbContext.Items
-                          .AsNoTracking()
-                          .Select(o => o.ToModel())
-                          .ToArrayAsync(cancellationToken);
+                _logger.LogInformation("Initiating database schema scan to compile global items registry report.");
 
-                _logger.LogInformation("Total items loaded: {Length}", items.Length);
+                var entities = await _dbContext.Items
+                    .AsNoTracking()
+                    .ToListAsync(cancellationToken);
 
-                return items;
+                var itemModelsList = entities.Select(entity => entity.ToModel());
+
+                _logger.LogInformation("Global database scan finalized successfully. Total items loaded into context: {Count}", entities.Count);
+
+                return itemModelsList;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error reading list of all items from database");
-
+                _logger.LogError(ex, "Critical data layer disruption encountered while compiling the complete list of items.");
                 throw;
             }
         }

@@ -34,15 +34,17 @@ namespace ProSpace.Infrastructure.Repositories
         {
             try
             {
+                _logger.LogInformation("Initiating database insertion sequence for a new Customer profile entity record: {Id}", customer.Id);
+
                 var entity = customer.ToEntity();
 
                 await _dbContext.Customers.AddAsync(entity, cancellationToken);
 
-                _logger.LogInformation("Customers {Id} attached to the context for creation", customer.Id);
+                _logger.LogInformation("Customer profile record {Id} successfully attached to the database memory context. Awaiting transaction commit.", customer.Id);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Critical error adding customer {Id} to DB context", customer.Id);
+                _logger.LogError(ex, "Critical database layer disruption encountered while adding a new Customer to DB context for ID: {Id}", customer.Id);
                 throw;
             }
         }
@@ -52,44 +54,52 @@ namespace ProSpace.Infrastructure.Repositories
         {
             try
             {
-                var found = await _dbContext.Customers
-                         .AsNoTracking()
-                         .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+                _logger.LogInformation("Attempting to locate and extract Customer profile for permanent removal: {Id}", id);
 
-                if (found == null)
+                var foundEntity = await _dbContext.Customers
+                    .FirstOrDefaultAsync(customer => customer.Id == id, cancellationToken);
+
+                if (foundEntity == null)
                 {
-                    _logger.LogWarning("Delete failed. Customer with ID {Id} not found", id);
-                    throw new KeyNotFoundException($"Customer with id = {id} was not found.");
+                    _logger.LogWarning("Extraction operation aborted. Customer profile with identity tracking token {Id} was not located.", id);
+                    throw new KeyNotFoundException($"Customer with id = {id} was not found in the persistent storage context.");
                 }
 
-                _dbContext.Customers.Remove(found);
-                _logger.LogInformation("Customer with ID {Id} marked for deletion in memory context", id);
+                _dbContext.Customers.Remove(foundEntity);
+
+                _logger.LogInformation("Customer profile with ID {Id} successfully marked for removal in memory context. Awaiting transaction commit.", id);
             }
-            catch (Exception ex) when (ex is not KeyNotFoundException)
+            catch (KeyNotFoundException)
             {
-                _logger.LogError(ex, "Critical error deleting customer {Id} in DB context", id);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Critical database layer disruption encountered while executing customer profile destruction sequence for ID: {Id}", id);
                 throw;
             }
         }
 
         /// <inheritdoc/>
-        public async Task<CustomerModel[]> ReadAllAsync(CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<CustomerModel>> ReadAllAsync(CancellationToken cancellationToken = default)
         {
             try
             {
-                var customers = await _dbContext.Customers
-                          .AsNoTracking()
-                          .Select(o => o.ToModel())
-                          .ToArrayAsync(cancellationToken);
+                _logger.LogInformation("Initiating database schema scan to compile global customers registry report.");
 
-                _logger.LogInformation("Total customers loaded: {Length}", customers.Length);
+                var entities = await _dbContext.Customers
+                    .AsNoTracking()
+                    .ToListAsync(cancellationToken);
 
-                return customers;
+                var customerModelsList = entities.Select(entity => entity.ToModel());
+
+                _logger.LogInformation("Global database scan finalized successfully. Total customers loaded into context: {Count}", entities.Count);
+
+                return customerModelsList;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error reading list of all customers from database");
-
+                _logger.LogError(ex, "Critical data layer disruption encountered while compiling the complete list of customers.");
                 throw;
             }
         }
@@ -99,21 +109,23 @@ namespace ProSpace.Infrastructure.Repositories
         {
             try
             {
-                var found = await _dbContext.Customers
-                         .AsNoTracking()
-                         .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+                _logger.LogInformation("Scanning database schema for single customer record matching tracking identity: {Id}", id);
 
-                if (found == null)
+                var foundEntity = await _dbContext.Customers
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(customer => customer.Id == id, cancellationToken);
+
+                if (foundEntity == null)
                 {
-                    _logger.LogWarning("Cannot find customer with id = {id}", id);
+                    _logger.LogInformation("No single customer record matches the requested database tracking identifier: {Id}", id);
                     return null;
                 }
 
-                return found.ToModel();
+                return foundEntity.ToModel();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Critical error reading customer {Id} in DB context", id);
+                _logger.LogError(ex, "Critical database layer disruption encountered while reading single customer for tracking identity: {Id}", id);
                 throw;
             }
         }
@@ -121,13 +133,36 @@ namespace ProSpace.Infrastructure.Repositories
         /// <inheritdoc/>
         public async Task UpdateAsync(CustomerModel customer, CancellationToken cancellationToken = default)
         {
-            var found = await _dbContext.Customers.FindAsync([customer.Id], cancellationToken)
-                 ?? throw new KeyNotFoundException($"Customer with id = {customer.Id} not found.");
+            try
+            {
+                _logger.LogInformation("Attempting to locate and update persistent state parameters for Customer profile: {Id}", customer.Id);
 
-            found.Name = customer.Name;
-            found.Code = customer.Code;
-            found.Address = customer.Address;
-            found.Discount = customer.Discount;
+                var foundEntity = await _dbContext.Customers.FindAsync([customer.Id], cancellationToken);
+
+                if (foundEntity == null)
+                {
+                    _logger.LogWarning("Data modification aborted. Customer profile with tracking ID {Id} was not found inside the database registers.", customer.Id);
+                    throw new KeyNotFoundException($"Customer with id = {customer.Id} not found in the persistent storage context.");
+                }
+
+                foundEntity.Name = customer.Name;
+                foundEntity.Code = customer.Code;
+                foundEntity.Address = customer.Address;
+                foundEntity.Discount = customer.Discount;
+
+                _dbContext.Customers.Update(foundEntity);
+
+                _logger.LogInformation("Customer profile {Id} parameters successfully synchronized in-memory. Awaiting transaction commit.", customer.Id);
+            }
+            catch (KeyNotFoundException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Critical database layer disruption encountered while updating state parameters for Customer profile: {Id}", customer.Id);
+                throw;
+            }
         }
 
         /// <inheritdoc/>
@@ -135,24 +170,50 @@ namespace ProSpace.Infrastructure.Repositories
         {
             try
             {
-                var found = await _dbContext.Customers
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(o => o.AppUser.Email == email, cancellationToken);
+                _logger.LogInformation("Initiating multi-tier identity scan loop to locate customer profile for email: {Email}", email);
 
-                if (found == null)
+                var foundEntity = await _dbContext.Customers
+                    .FirstOrDefaultAsync(customer => _dbContext.Users.Any(user => user.Id == customer.AppUserId && user.Email == email), cancellationToken);
+
+                if (foundEntity == null)
                 {
-                    _logger.LogWarning("Cannot find customers with email = {email}", email);
+                    _logger.LogInformation("No single customer record matches the requested authorization identity email credentials: {Email}", email);
                     return null;
                 }
 
-                return found.ToModel();
+                return foundEntity.ToModel();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Critical error reading customer {Email} in DB context", email);
+                _logger.LogError(ex, "Critical database layer disruption encountered while reading customer by email identity: {Email}", email);
                 throw;
             }
         }
 
+        /// <inheritdoc/>
+        public async Task<CustomerModel?> GetByAppUserIdAsync(Guid appUserId, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                _logger.LogInformation("Scanning database schema for customer record linked to Identity User ID: {AppUserId}", appUserId);
+
+                var foundEntity = await _dbContext.Customers
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(customer => customer.AppUserId == appUserId, cancellationToken);
+
+                if (foundEntity == null)
+                {
+                    _logger.LogInformation("No single customer record matches the requested authorization identity app user ID credentials: {AppUserId}", appUserId);
+                    return null;
+                }
+
+                return foundEntity.ToModel();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Critical database layer disruption encountered while reading customer by app user ID identity: {AppUserId}", appUserId);
+                throw;
+            }
+        }
     }
 }

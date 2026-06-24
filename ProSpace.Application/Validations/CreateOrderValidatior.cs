@@ -1,5 +1,5 @@
 ﻿using FluentValidation;
-using ProSpace.Contracts.DTO;
+using ProSpace.Contracts.DTO.Order;
 
 namespace ProSpace.Application.Validations
 {

@@ -22,8 +22,8 @@ namespace ProSpace.Application.Interfaces.Services
         /// Retrieves a list of all customers registered in the system.
         /// </summary>
         /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-        /// <returns>A <see cref="BaseResponse{CustomerDto[]}"/> containing the collection of customer DTOs in the Items field.</returns>
-        Task<BaseResponse<CustomerDto[]>> ReadAllAsync(CancellationToken cancellationToken = default);
+        /// <returns>A <see cref="BaseResponse{T}"/> containing the collection of customer DTOs in the Data field.</returns>
+        Task<BaseResponse<IEnumerable<CustomerDto>>> ReadAllAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Retrieves the profile details of a specific customer by their unique identifier.

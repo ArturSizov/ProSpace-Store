@@ -66,7 +66,6 @@ namespace ProSpace.Application.Services
             _httpContextAccessor = httpContextAccessor;
         }
 
-
         /// <inheritdoc/>
         public async Task<BaseIdResponse> RegisterCustomerAsync(RegisterCustomerDto dto, string role = "customer", CancellationToken cancellationToken = default)
         {
@@ -223,28 +222,28 @@ namespace ProSpace.Application.Services
         }
 
         /// <inheritdoc/>
-        public async Task<BaseResponse<CustomerDto[]>> ReadAllAsync(CancellationToken cancellationToken = default)
+        public async Task<BaseResponse<IEnumerable<CustomerDto>>> ReadAllAsync(CancellationToken cancellationToken = default)
         {
             try
             {
                 var domainCustomers = await _unitOfWork.CustomersRepository.ReadAllAsync(cancellationToken);
 
-                if (domainCustomers == null || domainCustomers.Length == 0)
+                if (domainCustomers == null || !domainCustomers.Any())
                 {
                     _logger.LogInformation("No customers found in the database.");
-                    return BaseResponse<CustomerDto[]>.Success([]);
+                    return BaseResponse<IEnumerable<CustomerDto>>.Success([]);
                 }
 
-                _logger.LogInformation("Total users found: {Count}", domainCustomers.Length);
+                _logger.LogInformation("Total users found: {Count}", domainCustomers.Count());
 
                 var dtos = domainCustomers.Select(x => x.ToDto()).ToArray();
 
-                return BaseResponse<CustomerDto[]>.Success(dtos);
+                return BaseResponse<IEnumerable<CustomerDto>>.Success(dtos);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error reading list of all customers.");
-                return BaseResponse<CustomerDto[]>.Failure("Failed to load customer list.");
+                return BaseResponse<IEnumerable<CustomerDto>>.Failure("Failed to load customer list.");
             }
         }
 

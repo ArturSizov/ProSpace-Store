@@ -1,7 +1,8 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ProSpace.Application.Interfaces.Services;
-using ProSpace.Contracts.DTO;
+using ProSpace.Contracts.Contracts.Request.Order;
+using ProSpace.Contracts.DTO.Order;
 using ProSpace.Contracts.Responses;
 
 namespace ProSpace.Api.Controllers
@@ -34,21 +35,46 @@ namespace ProSpace.Api.Controllers
         }
 
         /// <summary>
-        /// Creates and registers a new order in the system.
+        /// Creates a new order for an authorized customer.
         /// </summary>
-        /// <param name="dto">The order data transfer object containing customer and date specifications.</param>
-        /// <param name="ct">A token to monitor for cancellation requests.</param>
-        /// <returns>A unified response wrapper containing the generated ID of the new order.</returns>
-        /// <response code="200">The order was successfully validated and scheduled for creation.</response>
-        /// <response code="400">Validation failed or input data was corrupted.</response>
+        /// <param name="ct">Cancellation token to abort the operation.</param>
+        /// <returns>A standard response containing the created order ID on success.</returns>
         [HttpPost]
-        [Authorize]
+        [Authorize(Roles = "customer, Customer")]
         [ProducesResponseType(typeof(BaseIdResponse), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(BaseResponse<CreateOrderDto>), StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> Create([FromBody] CreateOrderDto dto, CancellationToken ct)
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> Create(CancellationToken ct)
         {
-            var response = await _service.CreateAsync(dto, ct);
-            return ProcessResponse(response);
+            var targetOrder = new OrderDto
+            {
+                Id = Guid.NewGuid(),
+                CustomerId = Guid.Empty
+            };
+
+            return ProcessResponse(await _service.CreateAsync(Guid.Empty, ct));
+        }
+
+        /// <summary>
+        /// Creates an order by a manager on behalf of a specific customer.
+        /// </summary>
+        /// <param name="request">The request body payload containing the customer identifier.</param>
+        /// <param name="ct">Cancellation token to abort the operation.</param>
+        /// <returns>A standard response containing the created order ID on success.</returns>
+        [HttpPost("admin/orders")]
+        [Authorize(Roles = "manager, Manager")]
+        [ProducesResponseType(typeof(BaseIdResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> CreateByManager([FromBody] MamagerCreateOrderRequest request, CancellationToken ct)
+        {
+            var targetOrder = new OrderDto
+            {
+                Id = Guid.NewGuid(),
+                CustomerId = request.CustomerId
+            };
+
+            return ProcessResponse(await _service.CreateAsync(request.CustomerId, ct));
         }
 
         /// <summary>
@@ -59,15 +85,14 @@ namespace ProSpace.Api.Controllers
         /// <returns>A unified response wrapper containing the matching order payload inside the Data field.</returns>
         /// <response code="200">The order record was successfully located and fetched.</response>
         /// <response code="404">No order was found matching the provided identifier.</response>
+        /// <response code="401">The request lacks valid authentication credentials.</response>
         [HttpGet("{id:guid}")]
         [Authorize]
         [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
-        {
-            var response = await _service.ReadAsync(id, ct);
-            return ProcessResponse(response);
-        }
+            => ProcessResponse(await _service.ReadAsync(id, ct));
 
         /// <summary>
         /// Retrieves a complete list of all orders registered in the system database.
@@ -76,39 +101,38 @@ namespace ProSpace.Api.Controllers
         /// <returns>A unified response wrapper containing the array of orders inside the Data field.</returns>
         /// <response code="200">The list of orders was successfully fetched (may return an empty array if no records exist).</response>
         [HttpGet]
-        [Authorize(Roles = "manager,Manager")]
+        [Authorize]
         [ProducesResponseType(typeof(BaseResponse<OrderDto[]>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAll(CancellationToken ct)
-        {
-            var response = await _service.ReadAllAsync(ct);
-            return ProcessResponse(response);
-        }
+            => ProcessResponse(await _service.ReadAllAsync(ct));
 
         /// <summary>
         /// Updates the core details (dates, numbers, status) of an existing order header.
         /// </summary>
         /// <param name="id">The unique identifier (GUID) of the order being updated. Must match the ID inside the request body.</param>
-        /// <param name="dto">The order data transfer object containing the updated fields.</param>
+        /// <param name="request">The order data transfer object containing the updated fields.</param>
         /// <param name="ct">A token to monitor for cancellation requests.</param>
         /// <returns>A unified response wrapper containing the updated order details inside the Data field.</returns>
         /// <response code="200">The order was successfully located, validated, and updated in the system.</response>
         /// <response code="400">The route ID does not match the body ID, or the input data failed validation rules.</response>
+        /// <response code="401">The request lacks valid authentication credentials.</response>
         /// <response code="404">The order with the specified identifier was not found in the database.</response>
         [HttpPut("{id:guid}")]
-        [Authorize]
-        [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> Update(Guid id, [FromBody] OrderDto dto, CancellationToken ct)
+        [Authorize(Roles = "manager, Manager")]
+        [ProducesResponseType(typeof(BaseIdResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> Update(Guid id, [FromBody] UpdateOrderRequest request, CancellationToken ct)
         {
-            if (id != dto.Id)
+            var targetOrder = new UpdateOrderDto
             {
-                _logger.LogWarning("Route ID {RouteId} does not match Request Body ID {BodyId}", id, dto.Id);
-                return BadRequest(BaseResponse<OrderDto>.Failure("The URL identifier does not match the provided object data identifier."));
-            }
+                Id = id,
+                Status = request.Status,
+                ShipmentDate = request.ShipmentDate,
+            };
 
-            var response = await _service.UpdateAsync(dto, ct);
-            return ProcessResponse(response);
+            return ProcessResponse(await _service.UpdateAsync(targetOrder, ct));
         }
 
         /// <summary>
@@ -119,15 +143,14 @@ namespace ProSpace.Api.Controllers
         /// <returns>A unified response wrapper verifying completion via the Id field.</returns>
         /// <response code="200">The order was found and deleted from the persistence layer.</response>
         /// <response code="404">No order matched the provided identity to perform deletion.</response>
+        /// <response code="401">The request lacks valid authentication credentials.</response>
         [HttpDelete("{id:guid}")]
         [Authorize]
         [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
-        {
-            var response = await _service.DeleteAsync(id, ct);
-            return ProcessResponse(response);
-        }
+            => ProcessResponse(await _service.DeleteAsync(id, ct));
 
         /// <summary>
         /// Searches for and retrieves a single order profile using its unique human-readable number.
@@ -137,15 +160,14 @@ namespace ProSpace.Api.Controllers
         /// <returns>A unified response wrapper containing the matching order details.</returns>
         /// <response code="200">The order with the requested number was found.</response>
         /// <response code="404">No order exists with the specified number.</response>
+        /// <response code="401">The request lacks valid authentication credentials.</response>
         [HttpGet("by-number/{number:int}")]
         [Authorize]
         [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetByNumber(int number, CancellationToken ct)
-        {
-            var response = await _service.GetByOrderNumberAsync(number, ct);
-            return ProcessResponse(response);
-        }
+            => ProcessResponse(await _service.GetByOrderNumberAsync(number, ct));
 
 
         /// <summary>
@@ -158,13 +180,10 @@ namespace ProSpace.Api.Controllers
         /// <response code="401">The request lacks valid authentication credentials.</response>
         [HttpGet("by-customer-code/{customerCode}")]
         [Authorize]
-        [ProducesResponseType(typeof(BaseResponse<OrderDto[]>), StatusCodes.Status200OK)] // ИСПРАВЛЕНО: Изменен дженерик на массив OrderDto[]
-        [ProducesResponseType(typeof(BaseResponse<OrderDto[]>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(BaseResponse<OrderDto[]>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetByCustomerCode(string customerCode, CancellationToken ct)
-        {
-            var response = await _service.GetByCustomerCodeAsync(customerCode, ct);
-            return ProcessResponse(response);
-        }
+            => ProcessResponse(await _service.GetByOrdersCustomerCodeAsync(customerCode, ct));
 
         /// <summary>
         /// Retrieves all orders associated with a specific customer using their unique identifier.
@@ -177,11 +196,8 @@ namespace ProSpace.Api.Controllers
         [HttpGet("by-customer-id/{customerId:guid}")]
         [Authorize]
         [ProducesResponseType(typeof(BaseResponse<OrderDto[]>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(BaseResponse<OrderDto[]>), StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetByCustomerId(Guid customerId, CancellationToken ct)
-        {
-            var response = await _service.GetByCustomerIdAsync(customerId, ct);
-            return ProcessResponse(response);
-        }
+            => ProcessResponse(await _service.GetByCustomersIdAsync(customerId, ct));
     }
 }

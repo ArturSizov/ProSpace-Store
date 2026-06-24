@@ -1,9 +1,6 @@
-﻿namespace ProSpace.Api.Contracts.Request
+﻿namespace ProSpace.Contracts.DTO.Order
 {
-    /// <summary>
-    /// Order request
-    /// </summary>
-    public class OrderRequest
+    public class CreateOrderDto
     {
         public Guid CustomerId { get; set; }
         public DateOnly OrderDate { get; set; }

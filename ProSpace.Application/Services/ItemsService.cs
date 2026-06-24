@@ -109,31 +109,30 @@ namespace ProSpace.Application.Services
         }
 
         /// <inheritdoc/>
-        public async Task<BaseResponse<ItemDto[]>> ReadAllAsync(CancellationToken cancellationToken = default)
+        public async Task<BaseResponse<IEnumerable<ItemDto>>> ReadAllAsync(CancellationToken cancellationToken = default)
         {
             try
             {
                 var domainItems = await _unitOfWork.ItemsRepository.ReadAllAsync(cancellationToken);
 
-                if (domainItems == null || domainItems.Length == 0)
+                if (domainItems == null || !domainItems.Any())
                 {
                     _logger.LogInformation("No items found in the database.");
-                    return BaseResponse<ItemDto[]>.Success([]);
+                    return BaseResponse<IEnumerable <ItemDto>>.Success([]);
                 }
 
-                _logger.LogInformation("Total items found: {Count}", domainItems.Length);
+                _logger.LogInformation("Total items found: {Count}", domainItems.Count());
 
                 var dtos = domainItems.Select(x => x.ToDto()).ToArray();
 
-                return BaseResponse<ItemDto[]>.Success(dtos);
+                return BaseResponse<IEnumerable<ItemDto>>.Success(dtos);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error reading list of all items.");
-                return BaseResponse<ItemDto[]>.Failure("Failed to load item list.");
+                return BaseResponse<IEnumerable<ItemDto>>.Failure("Failed to load item list.");
             }
         }
-
 
         /// <inheritdoc/>
         public async Task<BaseResponse<ItemDto>> ReadAsync(Guid id, CancellationToken cancellationToken = default)

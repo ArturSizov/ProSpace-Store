@@ -11,7 +11,8 @@ namespace ProSpace.Application.Validations
         public CustomerValidator()
         {
             RuleFor(x => x.Id)
-                .NotEmpty().WithMessage(Resources.BuyerIDRequiredToUpdate);
+                .NotEmpty()
+                .WithMessage(Resources.BuyerIDRequiredToUpdate);
 
 
             RuleFor(x => x.Name)

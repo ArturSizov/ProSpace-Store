@@ -79,7 +79,7 @@ namespace ProSpace.Infrastructure
         {
             var items = await unitOfWork.ItemsRepository.ReadAllAsync();
 
-            if (items == null || items.Length > 20)
+            if (items == null || items.Count() > 20)
                 return;
 
             const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";

@@ -138,4 +138,7 @@
   <data name="Category" xml:space="preserve">
     <value>Category</value>
   </data>
+  <data name="CustomerID" xml:space="preserve">
+    <value>Customer ID</value>
+  </data>
 </root>

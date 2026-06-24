@@ -91,6 +91,7 @@ internal class Program
 
         });
 
+        //Http context accessor
         builder.Services.AddHttpContextAccessor();
 
         builder.Services
@@ -98,7 +99,8 @@ internal class Program
             .AddScoped<IOrderItemsRepository, OrderItemsRepository>()
             .AddScoped<IOrdersRepository, OrdersRepository>()
             .AddScoped<ICustomersRepository, CustomerRepository>()
-            .AddScoped<IUnitOfWork, UnitOfWork>();
+            .AddScoped<IUnitOfWork, UnitOfWork>()
+            .AddScoped<ISecurityService, SecurityService>();
 
         // SERVICES (BLL) 
         builder.Services

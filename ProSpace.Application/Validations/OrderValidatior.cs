@@ -1,5 +1,6 @@
 ﻿using FluentValidation;
-using ProSpace.Contracts.DTO;
+using ProSpace.Application.Properties;
+using ProSpace.Contracts.DTO.Order;
 
 namespace ProSpace.Application.Validations
 {
@@ -8,10 +9,8 @@ namespace ProSpace.Application.Validations
         public OrderValidatior()
         {
             RuleFor(x => x.CustomerId)
-               .NotEmpty();
-
-            RuleFor(x => x.OrderDate)
-               .NotEmpty();
+               .NotEmpty()
+               .WithName(Resources.CustomerID);
         }
     }
 }

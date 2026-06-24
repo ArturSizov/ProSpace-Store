@@ -70,7 +70,7 @@ namespace ProSpace.Api.Controllers
         /// <returns>A unified response wrapper containing the item metrics payload inside the Data field.</returns>
         /// <response code="200">The catalog item record was successfully located and fetched.</response>
         /// <response code="404">No item record matches the provided unique identifier.</response>
-        /// /// <response code="401">The request lacks valid authentication credentials.</response>
+        /// <response code="401">The request lacks valid authentication credentials.</response>
         [HttpGet("{id:guid}")]
         [Authorize]
         [ProducesResponseType(typeof(BaseResponse<ItemDto>), StatusCodes.Status200OK)]

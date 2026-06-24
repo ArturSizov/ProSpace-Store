@@ -11,7 +11,7 @@ namespace ProSpace.Infrastructure.Entites.Supply
         public required string Name { get; set; }
         public required string Code { get; set; }
         public string? Address { get; set; }
-        public decimal? Discount { get; set; }
+        public decimal Discount { get; set; }
         public Guid AppUserId { get; set; }
         public AppUser AppUser { get; set; } = null!;
         public ICollection<OrderEntity> Orders { get; set; } = [];

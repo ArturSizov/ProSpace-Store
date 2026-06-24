@@ -138,4 +138,7 @@
   <data name="Category" xml:space="preserve">
     <value>Категория</value>
   </data>
+  <data name="CustomerID" xml:space="preserve">
+    <value>ID пользователя</value>
+  </data>
 </root>
