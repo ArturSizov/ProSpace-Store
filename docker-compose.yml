@@ -1,0 +1,30 @@
+services:
+  prospace-db:
+    image: postgres:16-alpine
+    container_name: prospace-postgres-db
+    restart: always
+    environment:
+      POSTGRES_USER: prospace_user
+      POSTGRES_PASSWORD: 123654789
+      POSTGRES_DB: prospace_store_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  prospace-api:
+    image: prospace-store-api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: prospace-web-api
+    ports:
+      - "8080:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=prospace-db;Port=5432;Database=prospace_store_db;Username=prospace_user;Password=123654789
+    depends_on:
+      - prospace-db
+
+volumes:
+  postgres_data:

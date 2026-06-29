@@ -9,9 +9,7 @@ using ProSpace.Application.Common.Interfaces;
 using ProSpace.Application.Interfaces.Repositories;
 using ProSpace.Application.Interfaces.Services;
 using ProSpace.Application.Services;
-using ProSpace.Application.Validations;
 using ProSpace.Application.Validations.Customer;
-using ProSpace.Contracts.DTO.OrderItem;
 using ProSpace.Infrastructure;
 using ProSpace.Infrastructure.Entites.Users;
 using ProSpace.Infrastructure.Identity.Services;
@@ -31,7 +29,7 @@ internal class Program
         // --- DATABASE & IDENTITY CONFIGURATION ---
         builder.Services.AddDbContext<ProSpaceDbContext>(options =>
         {
-            options.UseSqlite(builder.Configuration.GetConnectionString(nameof(ProSpaceDbContext)));
+            options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
         });
 
 
@@ -177,6 +175,23 @@ internal class Program
         app.UseAuthorization();
 
         app.MapControllers();
+
+        //To avoid manually installing dotnet ef
+        using (var scope = app.Services.CreateScope())
+        {
+            var services = scope.ServiceProvider;
+            try
+            {
+                var context = services.GetRequiredService<ProSpaceDbContext>();
+                Thread.Sleep(2000);
+                context.Database.Migrate();
+            }
+            catch (Exception ex)
+            {
+                var logger = services.GetRequiredService<ILogger<Program>>();
+                logger.LogError(ex, "Error applying auto-run migrations.");
+            }
+        }
 
         await app.RunAsync();
     }
