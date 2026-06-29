@@ -141,4 +141,22 @@
   <data name="CustomerID" xml:space="preserve">
     <value>ID пользователя</value>
   </data>
+  <data name="ItemsCount" xml:space="preserve">
+    <value>Количество товара</value>
+  </data>
+  <data name="AdminPrice" xml:space="preserve">
+    <value>Административно заданная цена не может быть отрицательной</value>
+  </data>
+  <data name="StandartCustomerPrice" xml:space="preserve">
+    <value>Для стандартных клиентов ограничена возможность ввода пользовательских параметров ценообразования.</value>
+  </data>
+  <data name="ItemPrice" xml:space="preserve">
+    <value>Цена</value>
+  </data>
+  <data name="Password" xml:space="preserve">
+    <value>Пароль</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>Имя</value>
+  </data>
 </root>

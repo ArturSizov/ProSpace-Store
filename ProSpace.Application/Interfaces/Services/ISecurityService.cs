@@ -6,11 +6,24 @@
     public interface ISecurityService
     {
         /// <summary>
-        /// Validates whether the currently authenticated user has rights to modify or view data tied to a specific Customer ID.
+        /// Validates whether the currently authenticated user has structural permissions to access resources 
+        /// associated with a specific customer profile.
         /// </summary>
-        /// <param name="customerId">The unique identifier of the customer owning the target resource.</param>
-        /// <returns>A tuple tracking success status alongside an optional validation failure description string.</returns>
-        Task<(bool IsSuccess, string Error)> ValidateOrderOwnershipAsync(Guid customerId);
+        /// <remarks>
+        /// This method enforces strict data isolation boundaries (Multi-Tenancy / Resource Ownership). 
+        /// Administrative accounts (Managers) bypass validation rules entirely. Standard customer accounts 
+        /// are strictly restricted to data where their identity token matches the system registry configuration.
+        /// </remarks>
+        /// <param name="customerId">The unique identifier of the customer profile owning the target resource.</param>
+        /// <param name="ct">The cancellation token to abort the asynchronous evaluation workflow.</param>
+        /// <returns>
+        /// A tuple containing:
+        /// <list type="bullet">
+        /// <item><description><c>IsSuccess</c>: <c>true</c> if access is granted; otherwise, <c>false</c>.</description></item>
+        /// <item><description><c>Error</c>: A localized technical string describing the reason for refusal, or empty on success.</description></item>
+        /// </list>
+        /// </returns>
+        Task<(bool IsSuccess, string Error)> ValidateCustomerAccessAsync(Guid customerId, CancellationToken ct = default);
 
         /// <summary>
         /// Returns the user's status.
@@ -30,5 +43,18 @@
         /// or no customer profile mapping has been instantiated in the storage registers.
         /// </returns>
         Task<Guid?> GetCurrentCustomerIdAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Extracts the email address string associated with the currently authenticated user from the active HTTP claims principal context.
+        /// </summary>
+        /// <remarks>
+        /// This method performs an in-memory scan of standard JWT token claim footprints (handling both <see cref="ClaimTypes.Email"/> 
+        /// and raw "email" payload keys) to avoid redundant infrastructure database roundtrips.
+        /// </remarks>
+        /// <returns>
+        /// A <see cref="string"/> representing the user's registered email address if found; 
+        /// otherwise, <c>null</c> if the user context is unauthenticated or the claim is missing.
+        /// </returns>
+        string? GetCurrentUserEmail();
     }
 }

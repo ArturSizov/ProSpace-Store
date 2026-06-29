@@ -141,4 +141,22 @@
   <data name="CustomerID" xml:space="preserve">
     <value>Customer ID</value>
   </data>
+  <data name="ItemsCount" xml:space="preserve">
+    <value>Items count</value>
+  </data>
+  <data name="AdminPrice" xml:space="preserve">
+    <value>Administrative price override cannot be a negative number</value>
+  </data>
+  <data name="StandartCustomerPrice" xml:space="preserve">
+    <value>Standard customers are restricted from supplying custom pricing parameters</value>
+  </data>
+  <data name="ItemPrice" xml:space="preserve">
+    <value>Price</value>
+  </data>
+  <data name="Password" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
 </root>

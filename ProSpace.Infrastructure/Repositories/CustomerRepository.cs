@@ -2,7 +2,9 @@
 using Microsoft.Extensions.Logging;
 using ProSpace.Application.Interfaces.Repositories;
 using ProSpace.Domain.Models;
+using ProSpace.Infrastructure.Entites.Supply;
 using ProSpace.Infrastructure.Mappers;
+using System.Linq.Expressions;
 
 namespace ProSpace.Infrastructure.Repositories
 {
@@ -215,5 +217,42 @@ namespace ProSpace.Infrastructure.Repositories
                 throw;
             }
         }
+
+        /// <inheritdoc/>
+        public async Task SoftDeleteAsync(Guid id, CancellationToken ct = default)
+        {
+            var entity = await _dbContext.Customers
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(c => c.Id == id, ct);
+
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+
+                _dbContext.Customers.Update(entity);
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task<string> GenerateNextCustomerCodeAsync(CancellationToken ct)
+        {
+            var allCodes = await _dbContext.Customers
+                .Select(c => c.Code)
+                .ToListAsync(ct);
+
+            int maxCodeNumber = allCodes
+                .Select(code => code?.Replace("-", "") ?? string.Empty)
+                .Select(code => int.TryParse(code, out var num) ? num : 0)
+                .DefaultIfEmpty(0)
+                .Max();
+
+            int nextNumber = maxCodeNumber + 1;
+
+            return nextNumber.ToString("D8").Insert(4, "-");
+        }
+
+        /// <inheritdoc/>
+        public async Task<bool> IsCodeAssignedToAnotherCustomerAsync(string code, Guid excludingCustomerId, CancellationToken ct)
+            => await _dbContext.Customers.AnyAsync(c => c.Code == code && c.Id != excludingCustomerId, ct);
     }
 }

@@ -1,4 +1,4 @@
-﻿using ProSpace.Contracts.DTO;
+﻿using ProSpace.Contracts.DTO.OrderItem;
 using ProSpace.Domain.Models;
 
 namespace ProSpace.Application.Mappers

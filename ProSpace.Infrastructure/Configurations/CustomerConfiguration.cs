@@ -27,6 +27,9 @@ namespace ProSpace.Infrastructure.Configurations
                    .WithOne(o => o.Customer)
                    .HasForeignKey(o => o.CustomerId)
                    .IsRequired(false);
+
+            builder.HasIndex(c => c.Code)
+                   .IsUnique();
         }
     }
 }

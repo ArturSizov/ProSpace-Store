@@ -1,12 +1,11 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ProSpace.Api.Contracts.Request;
-using ProSpace.Api.Controllers;
 using ProSpace.Application.Interfaces.Services;
-using ProSpace.Contracts.DTO;
+using ProSpace.Contracts.DTO.Customer;
 using ProSpace.Contracts.Responses;
 
-namespace ProSpace.WebAPI.Controllers
+namespace ProSpace.Api.Controllers
 {
     /// <summary>
     /// Provides HTTP endpoints for managing customer profiles and accounts, including registration, updates, and profile lookup.
@@ -51,7 +50,6 @@ namespace ProSpace.WebAPI.Controllers
             {
                 Email = request.Email,
                 Password = request.Password,
-                UserCode = request.UserCode,
                 Address = request.Address,
                 Discount = 0,
                 UserName = request.UserName
@@ -70,7 +68,7 @@ namespace ProSpace.WebAPI.Controllers
         /// <response code="404">No customer was found matching the provided identifier.</response>
         /// <response code="401">The request lacks valid authentication credentials.</response>
         [HttpGet("{id:guid}")]
-        [Authorize(Roles = "manager,Manager")]
+        [Authorize]
         [ProducesResponseType(typeof(BaseResponse<CustomerDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
@@ -84,7 +82,7 @@ namespace ProSpace.WebAPI.Controllers
         /// <returns>A unified response wrapper containing the array of customers inside the Data field.</returns>
         /// <response code="200">The list of customers was fetched successfully.</response>
         /// <response code="401">The request lacks valid authentication credentials.</response>
-        [HttpGet]
+        [HttpGet("admin")]
         [Authorize(Roles = "manager,Manager")]
         [ProducesResponseType(typeof(BaseResponse<IEnumerable<CustomerDto>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
@@ -92,23 +90,53 @@ namespace ProSpace.WebAPI.Controllers
             => ProcessResponse(await _service.ReadAllAsync(ct));
 
         /// <summary>
-        /// Updates the core profile information (name, address, discount) of an existing customer.
+        /// Updates a customer's personal profile information. Restricted to the profile owner.
         /// </summary>
-        /// <param name="id">The unique identifier (GUID) of the customer being updated inside the URL path.</param>
-        /// <param name="request">The customer data transfer object request containing the updated fields layout parameters.</param>
-        /// <param name="ct">A token to monitor for cancellation requests.</param>
-        /// <returns>A unified response wrapper containing the updated customer profile metrics data payload.</returns>
-        /// <response code="200">The customer profile was located and updated successfully.</response>
-        /// <response code="400">The request payload properties failed internal business validation rules criteria.</response>
-        /// <response code="404">The customer record with the requested identifier could not be located in stores.</response>
-        /// <response code="401">The request lacks valid authentication credentials tokens context.</response>
-        [HttpPut("{id:guid}")]
-        [Authorize]
+        /// <remarks>
+        /// This endpoint extracts the customer identifier directly from the secure URL route to guarantee REST conformity. 
+        /// Inbound JSON payloads are strictly limited to contact details (Name and Address). 
+        /// Administrative and commercial fields (such as Code and Discount) are excluded from the request structure 
+        /// to provide compile-time defense against over-posting parameter tampering.
+        /// </remarks>
+        /// <param name="request">The customer-safe payload defining requested personal information mutations.</param>
+        /// <param name="ct">The asynchronous operations lifecycle cancellation token reference.</param>
+        /// <returns>An IActionResult containing the successfully updated customer profile data or an error response block.</returns>
+        [HttpPut("me")]
+        [Authorize(Roles = "customer, Customer")]
         [ProducesResponseType(typeof(BaseResponse<CustomerDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> Update(Guid id, [FromBody] CustomerRequest request, CancellationToken ct)
+        public async Task<IActionResult> UpdateByCustomer([FromBody] UpdateCustomerRequest request, CancellationToken ct)
+        {
+            var targetDto = new CustomerDto
+            {
+                Name = request.Name,
+                Address = request.Address
+            };
+
+            return ProcessResponse(await _service.UpdateAsync(targetDto, ct));
+        }
+
+        /// <summary>
+        /// Administratively updates a customer profile configuration, enabling code and discount modifications.
+        /// </summary>
+        /// <remarks>
+        /// This endpoint maps the resource identifier from the secure URL route with the administrative payload from the request body. 
+        /// Restricted exclusively to Managerial roles, it allows direct mutation of all customer fields, 
+        /// including critical business parameters such as client corporate codes and customized loyalty discounts.
+        /// </remarks>
+        /// <param name="id">The unique Guid tracking key of the targeted customer profile located in the URL path parameters.</param>
+        /// <param name="request">The manager payload defining structural contact adjustments along with commercial override parameters.</param>
+        /// <param name="ct">The asynchronous operations lifecycle cancellation token reference.</param>
+        /// <returns>An IActionResult containing the administratively synchronized customer profile data or an error response block.</returns>
+        [HttpPut("admin/{id:guid}")]
+        [Authorize(Roles = "manager, Manager")]
+        [ProducesResponseType(typeof(BaseResponse<CustomerDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> UpdateByManager([FromRoute] Guid id, [FromBody] UpdateManagerRequest request, CancellationToken ct)
         {
             var targetDto = new CustomerDto
             {
@@ -122,6 +150,7 @@ namespace ProSpace.WebAPI.Controllers
             return ProcessResponse(await _service.UpdateAsync(targetDto, ct));
         }
 
+
         /// <summary>
         /// Permanently deletes a customer profile and removes their associated authorization system identity account.
         /// </summary>
@@ -131,7 +160,7 @@ namespace ProSpace.WebAPI.Controllers
         /// <response code="200">The customer record and its authentication context were successfully deleted.</response>
         /// <response code="404">No customer matched the provided identity to execute the deletion chain.</response>
         /// <response code="401">The request lacks valid authentication credentials.</response>
-        [HttpDelete("{id:guid}")]
+        [HttpDelete("admin/{id:guid}")]
         [Authorize(Roles = "manager,Manager")]
         [ProducesResponseType(typeof(BaseIdResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]

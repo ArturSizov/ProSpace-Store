@@ -1,6 +1,4 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using ProSpace.Application.Common.Models;
-using ProSpace.Contracts.Contracts.Response;
 using ProSpace.Contracts.Responses;
 
 namespace ProSpace.Api.Controllers

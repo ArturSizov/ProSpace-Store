@@ -2,7 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using ProSpace.Api.Contracts.Request;
 using ProSpace.Application.Interfaces.Services;
-using ProSpace.Contracts.DTO;
+using ProSpace.Contracts.DTO.Customer;
 using ProSpace.Contracts.Responses;
 
 namespace ProSpace.Api.Controllers
@@ -65,7 +65,6 @@ namespace ProSpace.Api.Controllers
                 {
                     Email = request.Email,
                     Password = request.Password,
-                    UserCode = request.UserCode,
                     Address = request.Address,
                     Discount = request.Discount,
                     UserName = request.UserName

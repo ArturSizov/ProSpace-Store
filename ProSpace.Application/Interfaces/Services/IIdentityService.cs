@@ -47,5 +47,22 @@ namespace ProSpace.Application.Interfaces.Services
         /// <param name="appUserId">The underlying global unique identity database tracking key identifier targeting extraction operations.</param>
         /// <returns>A tracking confirmation layout validation metric token validating successful transaction execution parameters.</returns>
         Task<BaseIdResponse> DeleteAccountAsync(Guid appUserId);
+
+        /// <summary>
+        /// Administratively blocks and locks out a security membership identity account indefinitely.
+        /// </summary>
+        /// <remarks>
+        /// This method acts as a high-level security containment operation:
+        /// <list type="bullet">
+        /// <item><description>Enforces a strict account lockout expiration timestamp extended to a distant future date (the year 2099).</description></item>
+        /// <item><description>Forces an immediate security stamp update (<c>UpdateSecurityStampAsync</c>) to invalidate all actively circulating JWT tokens or sessions associated with this identity context.</description></item>
+        /// </list>
+        /// </remarks>
+        /// <param name="appUserId">The unique infrastructure identity tracking key (<see cref="Guid"/>) of the target user stored inside the security database.</param>
+        /// <returns>
+        /// A standardized structural <see cref="BaseIdResponse"/> containing the locked account's <c>Id</c> on success, 
+        /// or a collection of structured system failure descriptions if the Identity Provider rejects the modification.
+        /// </returns>
+        Task<BaseIdResponse> BlockAccountAsync(Guid appUserId);
     }
 }

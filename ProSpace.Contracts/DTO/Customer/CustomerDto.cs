@@ -1,10 +1,8 @@
-﻿namespace ProSpace.Api.Contracts.Request
+﻿namespace ProSpace.Contracts.DTO.Customer
 {
-    /// <summary>
-    /// Customer request
-    /// </summary>
-    public class CustomerRequest
+    public class CustomerDto
     {
+        public Guid Id { get; set; }
         public string Name { get; set; } = null!;
         public string Code { get; set; } = null!;
         public string? Address { get; set; }

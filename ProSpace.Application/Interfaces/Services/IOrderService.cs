@@ -64,7 +64,7 @@ namespace ProSpace.Application.Interfaces.Services
         /// <param name="customerId">The unique identifier (GUID) of the customer profile record lookup target.</param>
         /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
         /// <returns>A <see cref="BaseResponse{T}"/> where T is <see cref="IEnumerable{OrderDto}"/>, containing the collection within the Data field.</returns>
-        Task<BaseResponse<IEnumerable<OrderDto>>> GetByCustomersIdAsync(Guid customerId, CancellationToken cancellationToken = default);
+        Task<BaseResponse<IEnumerable<OrderDto>>> GetOrderByCustomersIdAsync(Guid customerId, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Retrieves all orders belonging to a specific customer using their unique corporate business code string.

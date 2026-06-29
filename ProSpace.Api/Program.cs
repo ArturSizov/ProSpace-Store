@@ -10,6 +10,8 @@ using ProSpace.Application.Interfaces.Repositories;
 using ProSpace.Application.Interfaces.Services;
 using ProSpace.Application.Services;
 using ProSpace.Application.Validations;
+using ProSpace.Application.Validations.Customer;
+using ProSpace.Contracts.DTO.OrderItem;
 using ProSpace.Infrastructure;
 using ProSpace.Infrastructure.Entites.Users;
 using ProSpace.Infrastructure.Identity.Services;

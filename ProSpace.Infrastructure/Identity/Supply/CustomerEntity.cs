@@ -15,6 +15,7 @@ namespace ProSpace.Infrastructure.Entites.Supply
         public Guid AppUserId { get; set; }
         public AppUser AppUser { get; set; } = null!;
         public ICollection<OrderEntity> Orders { get; set; } = [];
+        public bool IsDeleted { get; set; }
     }
 
 }

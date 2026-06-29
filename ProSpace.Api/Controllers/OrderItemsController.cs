@@ -1,8 +1,8 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using ProSpace.Api.Contracts.Request;
 using ProSpace.Application.Interfaces.Services;
-using ProSpace.Contracts.DTO;
+using ProSpace.Contracts.Contracts.Request.OrderItem;
+using ProSpace.Contracts.DTO.OrderItem;
 using ProSpace.Contracts.Responses;
 
 namespace ProSpace.Api.Controllers
@@ -49,13 +49,12 @@ namespace ProSpace.Api.Controllers
         [ProducesResponseType(typeof(BaseIdResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> Create([FromBody] OrderItemRequest request, CancellationToken ct)
+        public async Task<IActionResult> Create([FromBody] CreateOrderItemRequest request, CancellationToken ct)
         {
             _logger.LogInformation("Mapping incoming create item request for Order ID: {OrderId}", request.OrderId);
 
-            var targetDto = new OrderItemDto
+            var targetDto = new CreateOrderItemDto
             {
-                Id = Guid.NewGuid(),
                 ItemId = request.ItemId,
                 ItemsCount = request.ItemsCount,
                 OrderId = request.OrderId,
@@ -79,7 +78,7 @@ namespace ProSpace.Api.Controllers
         [ProducesResponseType(typeof(BaseResponse<OrderItemDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
+        public async Task<IActionResult> GetById([FromRoute] Guid id, CancellationToken ct)
             => ProcessResponse(await _service.ReadAsync(id, ct));
 
         /// <summary>
@@ -108,26 +107,52 @@ namespace ProSpace.Api.Controllers
         /// <response code="404">The requested order item identifier key node was not located in database cache registers.</response>
         /// <response code="401">The request lacks valid authentication credentials tokens context.</response>
         [HttpPut("{id:guid}")]
-        [Authorize]
+        [Authorize(Roles = "customer, Customer")]
         [ProducesResponseType(typeof(BaseResponse<OrderItemDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> Update(Guid id, [FromBody] OrderItemRequest request, CancellationToken ct)
+        public async Task<IActionResult> UpdateByCustomer([FromRoute] Guid id, [FromBody] UpdateOrderItemRequest request, CancellationToken ct)
         {
             _logger.LogInformation("Compiling incoming modification payload parameters for Order Item Node: {Id}", id);
 
-            var targetItem = new OrderItemDto
+            var orderItem = new UpdateOrderItemDto
             {
                 Id = id,
-                OrderId = request.OrderId,
                 ItemsCount = request.ItemsCount,
-                ItemId = request.ItemId,
-                ItemPrice = 0
+                ItemId = request.ItemId
             };
 
-            return ProcessResponse(await _service.UpdateAsync(targetItem, ct));
+            return ProcessResponse(await _service.UpdateAsync(orderItem, ct));
         }
+
+        /// <summary>
+        /// Administratively overrides an order item configuration, enabling manual price and quantity adjustments.
+        /// </summary>
+        /// <remarks>
+        /// This endpoint maps the resource identifier from the secure URL route with the administrative payload from the request body. 
+        /// Restricted exclusively to Managerial roles, it allows manual pricing injection and configuration bypass 
+        /// to accommodate commercial B2B overrides, dispute settlements, or contractual edge-cases.
+        /// </remarks>
+        /// <param name="id">The unique Guid tracking key of the target order item resource located in the URL path parameters.</param>
+        /// <param name="request">The manager payload defining structural item adjustments along with custom price parameters.</param>
+        /// <param name="ct">The asynchronous operations lifecycle cancellation token reference.</param>
+        /// <returns>An IActionResult containing the administratively overridden order item state or an error response block.</returns>
+        [HttpPut("admin/{id:guid}")]
+        [Authorize(Roles = "manager, Manager")]
+        public async Task<IActionResult> UpdateByManager([FromRoute] Guid id, [FromBody] ManagerUpdateOrderItemRequest request, CancellationToken ct)
+        {
+            var orderItem = new UpdateOrderItemDto
+            {
+                Id = id,
+                ItemId = request.ItemId,
+                ItemPrice = request.ItemPrice,
+                ItemsCount = request.ItemsCount
+            };
+
+            return ProcessResponse(await _service.UpdateAsync(orderItem, ct));
+        }
+
 
         /// <summary>
         /// Purges a definitive tracking item context layer permanently out of active record files.
@@ -143,7 +168,7 @@ namespace ProSpace.Api.Controllers
         [ProducesResponseType(typeof(BaseIdResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+        public async Task<IActionResult> Delete([FromRoute] Guid id, CancellationToken ct)
             => ProcessResponse(await _service.DeleteAsync(id, ct));
     }
 }

@@ -198,7 +198,7 @@ namespace ProSpace.Infrastructure.Repositories
         }
 
         /// <inheritdoc/>
-        public async Task<IEnumerable<OrderModel>> GetByCustomerIdAsync(Guid customerId, CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<OrderModel>> GetOrdersByCustomerIdAsync(Guid customerId, CancellationToken cancellationToken = default)
         {
             try
             {

@@ -4,10 +4,10 @@ using Microsoft.Extensions.Logging;
 using ProSpace.Application.Interfaces.Repositories;
 using ProSpace.Application.Interfaces.Services;
 using ProSpace.Application.Mappers;
-using ProSpace.Contracts.DTO;
+using ProSpace.Contracts.Contracts.Request.OrderItem;
+using ProSpace.Contracts.DTO.OrderItem;
 using ProSpace.Contracts.Responses;
 using ProSpace.Domain.Models;
-using System.Security.Claims;
 
 namespace ProSpace.Application.Services
 {
@@ -19,9 +19,14 @@ namespace ProSpace.Application.Services
         private readonly ILogger<OrderItemsService> _logger;
 
         /// <summary>
-        /// Item validation service
+        /// Create Order item validation service
         /// </summary>
-        private readonly IValidator<OrderItemDto> _validation;
+        private readonly IValidator<CreateOrderItemDto> _createOrderItemValidation;
+
+        /// <summary>
+        /// Update Order item validation service
+        /// </summary>
+        private readonly IValidator<UpdateOrderItemDto> _updateOrderItemValidation;
 
         /// <summary>
         /// Unit of Work
@@ -29,30 +34,46 @@ namespace ProSpace.Application.Services
         private readonly IUnitOfWork _unitOfWork;
 
         /// <summary>
-        /// Http context accessor
+        /// Security service
         /// </summary>
-        private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly ISecurityService _securityService;
 
         /// <summary>
         /// Ctor
         /// </summary>
         /// <param name="logger"></param>
-        /// <param name="validation"></param>
+        /// <param name="createOrderItemValidation"></param>
+        /// <param name="updateOrderItemValidation"></param>
         /// <param name="unitOfWork"></param>
-        public OrderItemsService(ILogger<OrderItemsService> logger, IValidator<OrderItemDto> validation, IUnitOfWork unitOfWork, IHttpContextAccessor httpContextAccessor)
+        public OrderItemsService(ILogger<OrderItemsService> logger, IValidator<CreateOrderItemDto> createOrderItemValidation, 
+            IValidator<UpdateOrderItemDto> updateOrderItemValidation,
+            IUnitOfWork unitOfWork, ISecurityService securityService)
         {
             _logger = logger;
-            _validation = validation;
+            _createOrderItemValidation = createOrderItemValidation;
+            _updateOrderItemValidation = updateOrderItemValidation;
             _unitOfWork = unitOfWork;
-            _httpContextAccessor = httpContextAccessor;
+            _securityService = securityService;
         }
 
         /// <inheritdoc/>
-        public async Task<BaseIdResponse> CreateAsync(OrderItemDto dto, CancellationToken cancellationToken = default)
+        public async Task<BaseIdResponse> CreateAsync(CreateOrderItemDto dto, CancellationToken cancellationToken = default)
         {
             try
             {
                 _logger.LogInformation("Processing order item creation sequence for product {ItemId} inside Order {OrderId}", dto.ItemId, dto.OrderId);
+
+                var validate = await _createOrderItemValidation.ValidateAsync(dto, cancellationToken);
+
+                if (!validate.IsValid)
+                {
+                    var validationErrorsCollection = validate.Errors.Select(e => e.ErrorMessage);
+
+                    _logger.LogWarning("Request to create exceptions at the next processing stage. Input data properties failed validation against the rules: {Errors}",
+                        string.Join("; ", validationErrorsCollection));
+
+                    return BaseIdResponse.Failure(validationErrorsCollection);
+                }
 
                 var catalogItem = await _unitOfWork.ItemsRepository.ReadAsync(dto.ItemId, cancellationToken);
                 if (catalogItem == null)
@@ -68,27 +89,32 @@ namespace ProSpace.Application.Services
                     return BaseIdResponse.Failure("Target order container was not found.");
                 }
 
+                var (IsSuccess, Error) = await _securityService.ValidateCustomerAccessAsync(parentOrder.CustomerId, cancellationToken);
+
+                if (!IsSuccess)
+                {
+                    _logger.LogCritical("Security breach attempt blocked! Unauthorized user tried to insert item line into Order: {OrderId}", dto.OrderId);
+                    return BaseIdResponse.Failure(Error);
+                }
+
+                if (parentOrder.Status != "New")
+                {
+                    _logger.LogWarning("Creation rejected. Order {OrderId} is locked under status: {Status}", dto.OrderId, parentOrder.Status);
+                    return BaseIdResponse.Failure("Cannot add items to an active or processed order.");
+                }
+
                 var customer = await _unitOfWork.CustomersRepository.ReadAsync(parentOrder.CustomerId, cancellationToken);
                 if (customer == null)
                 {
-                    _logger.LogWarning("Creation rejected. Customer profile linked to order ID {OrderId} (CustomerKey: {CustomerId}) not found.",
-                        dto.OrderId, parentOrder.CustomerId);
+                    _logger.LogWarning("Creation rejected. Customer profile linked to order ID {OrderId} not found.", dto.OrderId);
                     return BaseIdResponse.Failure("The customer profile associated with this order container was not found.");
-                }
-
-                var accessCheck = await ValidateOrderOwnershipAsync(parentOrder.CustomerId);
-
-                if (!accessCheck.IsSuccess)
-                {
-                    _logger.LogCritical("Security breach attempt blocked! Unauthorized user tried to insert item line into Order: {OrderId}", dto.OrderId);
-                    return BaseIdResponse.Failure(accessCheck.Error);
                 }
 
                 decimal singleUnitDiscountedPrice = catalogItem.Price * (1m - (customer.Discount / 100m));
 
                 var domainOrderItem = new OrderItemModel
                 {
-                    Id = dto.Id,
+                    Id = Guid.NewGuid(),
                     OrderId = dto.OrderId,
                     ItemId = dto.ItemId,
                     ItemsCount = dto.ItemsCount,
@@ -122,24 +148,24 @@ namespace ProSpace.Application.Services
             {
                 _logger.LogInformation("Initiating secure deletion sequence for order item tracking key: {Id}", id);
 
-                var item = await _unitOfWork.OrderItemsRepository.ReadAsync(id, cancellationToken);
+                var orderItem = await _unitOfWork.OrderItemsRepository.ReadAsync(id, cancellationToken);
 
-                if (item == null)
+                if (orderItem == null)
                 {
                     _logger.LogWarning("Extraction operation suspended. Order item with ID {Id} was not located.", id);
                     return BaseIdResponse.Failure($"Order item with ID {id} not found inside system registers.");
                 }
 
-                var parentOrder = await _unitOfWork.OrdersRepository.ReadAsync(item.OrderId, cancellationToken);
+                var parentOrder = await _unitOfWork.OrdersRepository.ReadAsync(orderItem.OrderId, cancellationToken);
 
                 if (parentOrder == null)
                 {
                     _logger.LogError("Database integrity violation: Order item {Id} points to non-existent Order {OrderId}.",
-                        item.Id, item.OrderId);
+                        orderItem.Id, orderItem.OrderId);
                     return BaseIdResponse.Failure("Internal reference consistency breakdown. Parent order container missing.");
                 }
 
-                var (isSuccess, error) = await ValidateOrderOwnershipAsync(parentOrder.CustomerId);
+                var (isSuccess, error) = await _securityService.ValidateCustomerAccessAsync(parentOrder.CustomerId, cancellationToken);
 
                 if (!isSuccess)
                 {
@@ -148,16 +174,11 @@ namespace ProSpace.Application.Services
                     return BaseIdResponse.Failure(error);
                 }
 
-                var currentUser = _httpContextAccessor.HttpContext?.User;
-
-                if (currentUser != null && !currentUser.IsInRole("manager") && !currentUser.IsInRole("Manager"))
+                if (!_securityService.IsManager() && parentOrder.Status != "New")
                 {
-                    if (parentOrder.Status != "New")
-                    {
-                        _logger.LogWarning("Extraction operation rejected. Customer tried to delete Item {ItemId} from active Order {OrderId} with status: {Status}",
-                            id, parentOrder.Id, parentOrder.Status);
-                        return BaseIdResponse.Failure("Access denied. Items can only be extracted from new unfulfilled orders.");
-                    }
+                    _logger.LogWarning("Extraction operation rejected. Customer tried to delete Item {ItemId} from active Order {OrderId} with status: {Status}",
+                        id, parentOrder.Id, parentOrder.Status);
+                    return BaseIdResponse.Failure("Access denied. Items can only be extracted from new unfulfilled orders.");
                 }
 
                 await _unitOfWork.OrderItemsRepository.DeleteAsync(id, cancellationToken);
@@ -186,42 +207,36 @@ namespace ProSpace.Application.Services
             {
                 _logger.LogInformation("Initiating secure global collection scan for order items data models layer.");
 
-                var currentUser = _httpContextAccessor.HttpContext?.User;
-
-                if (currentUser != null && (currentUser.IsInRole("manager") || currentUser.IsInRole("Manager")))
+                if (_securityService.IsManager())
                 {
                     _logger.LogInformation("Manager privileges verified. Fetching the complete database sequence.");
 
                     var allOrderItems = await _unitOfWork.OrderItemsRepository.ReadAllAsync(cancellationToken);
-                    var allDtos = allOrderItems?.Select(item => item.ToDto()) ?? [];
+
+                    var allDtos = allOrderItems?.Select(item => item.ToDto()).ToList() ?? Enumerable.Empty<OrderItemDto>();
 
                     return BaseResponse<IEnumerable<OrderItemDto>>.Success(allDtos);
                 }
 
-                var nameIdentifierClaim = currentUser?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var authenticatedCustomerId = await _securityService.GetCurrentCustomerIdAsync(cancellationToken);
 
-                if (!Guid.TryParse(nameIdentifierClaim, out var authenticatedUserId))
+                if (authenticatedCustomerId == null || authenticatedCustomerId == Guid.Empty)
                 {
-                    _logger.LogError("Security system breakdown: Unable to resolve a valid Guid from user NameIdentifier claim.");
-                    return BaseResponse<IEnumerable<OrderItemDto>>.Failure("Access denied. Invalid user identity configuration tokens.");
-                }
+                    _logger.LogWarning("Orders compilation terminated. Active user context mapping not found.");
 
-                var customerProfile = await _unitOfWork.CustomersRepository.GetByAppUserIdAsync(authenticatedUserId, cancellationToken);
-
-                if (customerProfile == null)
-                {
-                    _logger.LogWarning("Order items gathering halted. Customer profile not found for identity user: {UserId}", authenticatedUserId);
                     return BaseResponse<IEnumerable<OrderItemDto>>.Success([]);
                 }
 
-                var accessCheck = await ValidateOrderOwnershipAsync(customerProfile.Id);
-                if (!accessCheck.IsSuccess)
-                    return BaseResponse<IEnumerable<OrderItemDto>>.Failure(accessCheck.Error);
+                _logger.LogInformation("Standard customer account verified. Executing isolated database query for Customer ID: {CustomerId}", authenticatedCustomerId);
 
-                var customerSpecificOrderItems = await _unitOfWork.OrderItemsRepository.GetOrderItemsByCustomerIdAsync(customerProfile.Id, cancellationToken);
-                var customerDtos = customerSpecificOrderItems?.Select(item => item.ToDto()) ?? [];
+                var customerSpecificOrderItemsList = await _unitOfWork.OrderItemsRepository.GetOrderItemsByCustomerIdAsync(authenticatedCustomerId.Value, cancellationToken);
 
-                return BaseResponse<IEnumerable<OrderItemDto>>.Success(customerDtos);
+                var filteredCustomerOrderItemsDtos = customerSpecificOrderItemsList?.Select(order => order.ToDto()).ToList() ?? [];
+
+                _logger.LogInformation("Successfully compiled safe isolated orders ledger sequence for Customer profile: {CustomerId}. Total loaded: {Count}",
+                    authenticatedCustomerId, filteredCustomerOrderItemsDtos.Count);
+
+                return BaseResponse<IEnumerable<OrderItemDto>>.Success(filteredCustomerOrderItemsDtos);
             }
             catch (Exception ex)
             {
@@ -235,12 +250,30 @@ namespace ProSpace.Application.Services
         {
             try
             {
+                _logger.LogInformation("The process of reading the Order Item by ID has begun.");
+
                 var orderItem = await _unitOfWork.OrderItemsRepository.ReadAsync(id, cancellationToken);
 
                 if (orderItem == null)
                 {
                     _logger.LogWarning("Order item with ID {Id} not found.", id);
+                    return BaseResponse<OrderItemDto>.Failure($"Order item with ID {id} not found.");
+                }
 
+                var parentOrder = await _unitOfWork.OrdersRepository.ReadAsync(orderItem.OrderId, cancellationToken);
+
+                if (parentOrder == null)
+                {
+                    _logger.LogError("Database integrity violation: Order item {Id} points to non-existent Order {OrderId}.",
+                        orderItem.Id, orderItem.OrderId);
+                    return BaseResponse<OrderItemDto>.Failure($"Order item with ID {id} not found.");
+                }
+
+                var (isSuccess, error) = await _securityService.ValidateCustomerAccessAsync(parentOrder.CustomerId, cancellationToken);
+
+                if (!isSuccess)
+                {
+                    _logger.LogCritical("Security enforcement blocked unauthorized access attempt to Order Item ID: {Id}", id);
                     return BaseResponse<OrderItemDto>.Failure($"Order item with ID {id} not found.");
                 }
 
@@ -258,73 +291,92 @@ namespace ProSpace.Application.Services
         }
 
         /// <inheritdoc/>
-        public async Task<BaseResponse<OrderItemDto>> UpdateAsync(OrderItemDto orderItem, CancellationToken cancellationToken = default)
+        public async Task<BaseResponse<OrderItemDto>> UpdateAsync(UpdateOrderItemDto dto, CancellationToken cancellationToken = default)
         {
             try
             {
-                _logger.LogInformation("Processing architectural updates configuration for order item target: {Id}", orderItem.Id);
+                _logger.LogInformation("Initiating update for order item: {Id}", dto.Id);
 
-                var existingOrderItem = await _unitOfWork.OrderItemsRepository.ReadAsync(orderItem.Id, cancellationToken);
-                if (existingOrderItem == null)
+                var validate = await _updateOrderItemValidation.ValidateAsync(dto, cancellationToken);
+
+                if (!validate.IsValid)
                 {
-                    _logger.LogWarning("Modification halted. Order item with tracking ID {Id} was not located inside registers.", orderItem.Id);
-                    return BaseResponse<OrderItemDto>.Failure($"Order item with ID {orderItem.Id} not found.");
+                    var validationErrorsCollection = validate.Errors.Select(e => e.ErrorMessage);
+
+                    _logger.LogWarning("Request to create exceptions at the next processing stage. Input data properties failed validation against the rules: {Errors}",
+                        string.Join("; ", validationErrorsCollection));
+
+                    return BaseResponse<OrderItemDto>.Failure(validationErrorsCollection);
                 }
+
+                var existingOrderItem = await _unitOfWork.OrderItemsRepository.ReadAsync(dto.Id, cancellationToken);
+                if (existingOrderItem == null)
+                    return BaseResponse<OrderItemDto>.Failure($"Order item with ID {dto.Id} not found.");
 
                 var parentOrder = await _unitOfWork.OrdersRepository.ReadAsync(existingOrderItem.OrderId, cancellationToken);
                 if (parentOrder == null)
+                    return BaseResponse<OrderItemDto>.Failure("Internal reference consistency breakdown. Parent order missing.");
+
+                var (isSuccess, error) = await _securityService.ValidateCustomerAccessAsync(parentOrder.CustomerId, cancellationToken);
+                if (!isSuccess)
                 {
-                    _logger.LogError("Database integrity failure: Order item {Id} points to a missing parent Order {OrderId}", existingOrderItem.Id, existingOrderItem.OrderId);
-                    return BaseResponse<OrderItemDto>.Failure("Internal database reference consistency error.");
+                    _logger.LogCritical("Security breach attempt! Unauthorized item modification blocked for Order Item: {Id}", dto.Id);
+                    return BaseResponse<OrderItemDto>.Failure($"Order item with ID {dto.Id} not found.");
                 }
 
-                var accessCheck = await ValidateOrderOwnershipAsync(parentOrder.CustomerId);
-                if (!accessCheck.IsSuccess)
+                if (!_securityService.IsManager() && parentOrder.Status != "New")
                 {
-                    _logger.LogCritical("Security breach attempt! Unauthorized item modification blocked for Order Item Node: {Id}", orderItem.Id);
-                    return BaseResponse<OrderItemDto>.Failure(accessCheck.Error);
+                    _logger.LogWarning("Modification rejected. Customer tried to update Item {ItemId} inside active Order {OrderId} with status {Status}",
+                        dto.Id, parentOrder.Id, parentOrder.Status);
+                    return BaseResponse<OrderItemDto>.Failure("Access denied. Items can only be modified in new unfulfilled orders.");
                 }
 
-                var currentUser = _httpContextAccessor.HttpContext?.User;
-                decimal determinedFinalPrice = existingOrderItem.ItemPrice;
-
-                if (currentUser != null && !currentUser.IsInRole("manager") && !currentUser.IsInRole("Manager"))
+                var catalogItem = await _unitOfWork.ItemsRepository.ReadAsync(dto.ItemId, cancellationToken);
+                if (catalogItem == null)
                 {
-                    _logger.LogInformation("Standard customer account update detected for item {Id}. Retaining existing historical price: {Price}",
-                        orderItem.Id, existingOrderItem.ItemPrice);
+                    _logger.LogWarning("Update rejected. Product {ItemId} does not exist in the catalog registries.", dto.ItemId);
+                    return BaseResponse<OrderItemDto>.Failure("The selected product does not exist in our catalog.");
+                }
 
-                    var customer = await _unitOfWork.CustomersRepository.ReadAsync(parentOrder.CustomerId, cancellationToken);
-                    var catalogItem = await _unitOfWork.ItemsRepository.ReadAsync(existingOrderItem.ItemId, cancellationToken);
+                _logger.LogInformation("Calculating dynamic price based on catalog and customer discount for item {Id}", dto.Id);
 
-                    if (customer != null && catalogItem != null)
-                        determinedFinalPrice = catalogItem.Price * (1m - (customer.Discount / 100m));
+                var customer = await _unitOfWork.CustomersRepository.ReadAsync(parentOrder.CustomerId, cancellationToken);
+                decimal discount = customer?.Discount ?? 0m;
+                decimal determinedFinalPrice = catalogItem.Price * (1m - (discount / 100m));
 
+                if (_securityService.IsManager())
+                {
+                    if (dto.ItemPrice != 0)
+                    {
+                        _logger.LogInformation("Manager administrative price override applied for item {Id}: {Price}", dto.Id, dto.ItemPrice);
+                        determinedFinalPrice = dto.ItemPrice;
+                    }
                 }
                 else
                 {
-                    _logger.LogInformation("Manager account update detected for item {Id}. Applying requested custom price parameter: {Price}",
-                        orderItem.Id, orderItem.ItemPrice);
-
-                    determinedFinalPrice = orderItem.ItemPrice;
+                    if (dto.ItemPrice != 0)
+                    {
+                        _logger.LogCritical("Security integrity alert! Customer tried to inject a custom price: {Price} for item {Id}", dto.ItemPrice, dto.Id);
+                        return BaseResponse<OrderItemDto>.Failure("Access denied. Custom pricing parameters are restricted.");
+                    }
                 }
 
-                existingOrderItem.ItemsCount = orderItem.ItemsCount;
-                existingOrderItem.ItemId = orderItem.ItemId;
-                existingOrderItem.ItemPrice = determinedFinalPrice; 
+                existingOrderItem.ItemsCount = dto.ItemsCount;
+                existingOrderItem.ItemId = dto.ItemId;
+                existingOrderItem.ItemPrice = determinedFinalPrice;
 
                 await _unitOfWork.OrderItemsRepository.UpdateAsync(existingOrderItem, cancellationToken);
 
                 if (!await _unitOfWork.CompleteAsync(cancellationToken))
-                    _logger.LogWarning("No structural data changes were stored for order item {Id} (data payload might be identical).", orderItem.Id);
-
+                    _logger.LogWarning("No structural data changes were stored for order item {Id} (data payload might be identical).", dto.Id);
                 else
-                    _logger.LogInformation("Order item {Id} state modification successfully written down to active databases.", existingOrderItem.Id);
+                    _logger.LogInformation("Order item updated successfully. ID: {Id}", dto.Id);
 
                 return BaseResponse<OrderItemDto>.Success(existingOrderItem.ToDto());
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "An unhandled execution lifecycle exception crashed order item state synchronization for tracking ID: {Id}", orderItem.Id);
+                _logger.LogCritical(ex, "A critical unhandled execution exception crashed order item state synchronization for ID: {Id}", dto.Id);
                 return BaseResponse<OrderItemDto>.Failure("An internal service error occurred while processing the order item update transaction.");
             }
         }
@@ -336,42 +388,25 @@ namespace ProSpace.Application.Services
             {
                 _logger.LogInformation("Processing secure data isolation routing layout scans for order items under Order: {OrderId}", orderId);
 
-                var currentUser = _httpContextAccessor.HttpContext?.User;
-
-                var parentOrder = await _unitOfWork.OrdersRepository.ReadAsync(orderId, cancellationToken);
-
-                if (parentOrder == null)
+                if (_securityService.IsManager())
                 {
-                    _logger.LogWarning("Order items lookup suspended. Parent Order key tracking node {OrderId} not found.", orderId);
-                    return BaseResponse<IEnumerable<OrderItemDto>>.Failure($"Order with tracking identifier {orderId} does not exist.");
+                    var allOrderItemsList = await _unitOfWork.OrderItemsRepository.GetOrderItemsByOrderIdAsync(orderId, cancellationToken);
+                    var allOrderItemDtosCollection = allOrderItemsList?.Select(order => order.ToDto()).ToList() ?? [];
+
+                    _logger.LogInformation("Manager query: Total order items found by order ID {Id}: {Count}", orderId, allOrderItemDtosCollection.Count);
+
+                    return BaseResponse<IEnumerable<OrderItemDto>>.Success(allOrderItemDtosCollection);
                 }
 
-                var customer = await _unitOfWork.CustomersRepository.ReadAsync(parentOrder.CustomerId, cancellationToken);
+                var authenticatedCustomerId = await _securityService.GetCurrentCustomerIdAsync(cancellationToken);
 
-                if (customer == null)
+                if (authenticatedCustomerId == null || authenticatedCustomerId == Guid.Empty)
                 {
-                    _logger.LogWarning("Order item search suspended. Customer profile not found. {CustomerId}", parentOrder.CustomerId);
-                    return BaseResponse<IEnumerable<OrderItemDto>>.Failure($"Customer profile with ID {parentOrder.CustomerId} does not exist.");
+                    _logger.LogWarning("Order items compilation terminated. Active user context mapping not found.");
+                    return BaseResponse<IEnumerable<OrderItemDto>>.Success([]);
                 }
 
-                if (currentUser != null && !currentUser.IsInRole("manager") && !currentUser.IsInRole("Manager"))
-                {
-                    var nameIdentifierClaim = currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
-                    if (!Guid.TryParse(nameIdentifierClaim, out var authenticatedUserId))
-                    {
-                        _logger.LogError("Security system breakdown: Unable to resolve a valid Guid from user NameIdentifier claim context.");
-                        return BaseResponse<IEnumerable<OrderItemDto>>.Failure("Access denied. Invalid user identity configuration.");
-                    }
-
-                    if (authenticatedUserId != customer.AppUserId)
-                    {
-                        _logger.LogCritical("Security breach attempt blocked! Authenticated standard user {AuthId} tried to view line items for Order {OrderId} owned by user {OwnerId}.",
-                            authenticatedUserId, orderId, customer.AppUserId);
-
-                        return BaseResponse<IEnumerable<OrderItemDto>>.Failure("Access denied. You are not authorized to view components of this order.");
-                    }
-                }
+                _logger.LogInformation("Standard customer account verified. Validating requested Order ID: {OrderId}", orderId);
 
                 var orderItemsCollection = await _unitOfWork.OrderItemsRepository.GetOrderItemsByOrderIdAsync(orderId, cancellationToken);
 
@@ -386,47 +421,6 @@ namespace ProSpace.Application.Services
                 _logger.LogError(ex, "An unhandled exception framework crash disrupted line items gathering for parent order: {OrderId}", orderId);
                 return BaseResponse<IEnumerable<OrderItemDto>>.Failure("An internal service error occurred while resolving order structure properties.");
             }
-        }
-
-        /// <summary>
-        /// Validates whether the currently authenticated user has rights to modify or view data tied to a specific Customer ID.
-        /// Managers are always allowed; standard customers are restricted strictly to their own accounts.
-        /// </summary>
-        /// <param name="customerId">The unique identifier of the customer owning the target order resource.</param>
-        /// <returns>A tuple indicating success status and an optional localized error message text string description.</returns>
-        private async Task<(bool IsSuccess, string Error)> ValidateOrderOwnershipAsync(Guid customerId)
-        {
-            var currentUser = _httpContextAccessor.HttpContext?.User;
-
-            if (currentUser != null && (currentUser.IsInRole("manager") || currentUser.IsInRole("Manager")))
-                return (true, string.Empty);
-
-
-            var nameIdentifierClaim = currentUser?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
-            if (!Guid.TryParse(nameIdentifierClaim, out var authenticatedUserId))
-            {
-                _logger.LogError("Security system breakdown: Unable to resolve a valid Guid from user NameIdentifier claim context.");
-                return (false, "Access denied. Invalid user identity configuration parameters.");
-            }
-
-            var customerProfile = await _unitOfWork.CustomersRepository.ReadAsync(customerId);
-
-            if (customerProfile == null)
-            {
-                _logger.LogWarning("Access evaluation suspended. Parent Customer record {Id} was not located in database registers.", customerId);
-                return (false, "Associated customer account data profile was not found.");
-            }
-
-            if (authenticatedUserId != customerProfile.AppUserId)
-            {
-                _logger.LogCritical("Security breach attempt blocked! Authenticated standard user {AuthId} tried to access data owned by Customer profile {CustomerId} (Owned by user: {OwnerId}).",
-                    authenticatedUserId, customerId, customerProfile.AppUserId);
-
-                return (false, "Access denied. You do not possess structural permissions to view or modify this resource.");
-            }
-
-            return (true, string.Empty);
         }
     }
 }

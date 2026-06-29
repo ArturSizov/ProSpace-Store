@@ -45,15 +45,7 @@ namespace ProSpace.Api.Controllers
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> Create(CancellationToken ct)
-        {
-            var targetOrder = new OrderDto
-            {
-                Id = Guid.NewGuid(),
-                CustomerId = Guid.Empty
-            };
-
-            return ProcessResponse(await _service.CreateAsync(Guid.Empty, ct));
-        }
+            => ProcessResponse(await _service.CreateAsync(Guid.Empty, ct));
 
         /// <summary>
         /// Creates an order by a manager on behalf of a specific customer.
@@ -61,21 +53,13 @@ namespace ProSpace.Api.Controllers
         /// <param name="request">The request body payload containing the customer identifier.</param>
         /// <param name="ct">Cancellation token to abort the operation.</param>
         /// <returns>A standard response containing the created order ID on success.</returns>
-        [HttpPost("admin/orders")]
+        [HttpPost("admin")]
         [Authorize(Roles = "manager, Manager")]
         [ProducesResponseType(typeof(BaseIdResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> CreateByManager([FromBody] MamagerCreateOrderRequest request, CancellationToken ct)
-        {
-            var targetOrder = new OrderDto
-            {
-                Id = Guid.NewGuid(),
-                CustomerId = request.CustomerId
-            };
-
-            return ProcessResponse(await _service.CreateAsync(request.CustomerId, ct));
-        }
+            => ProcessResponse(await _service.CreateAsync(request.CustomerId, ct));
 
         /// <summary>
         /// Retrieves the profile details of a specific order header using its unique identifier.
@@ -91,7 +75,7 @@ namespace ProSpace.Api.Controllers
         [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
+        public async Task<IActionResult> GetById([FromRoute] Guid id, CancellationToken ct)
             => ProcessResponse(await _service.ReadAsync(id, ct));
 
         /// <summary>
@@ -107,7 +91,7 @@ namespace ProSpace.Api.Controllers
             => ProcessResponse(await _service.ReadAllAsync(ct));
 
         /// <summary>
-        /// Updates the core details (dates, numbers, status) of an existing order header.
+        /// Updates the core details (dates, status) of an existing order header.
         /// </summary>
         /// <param name="id">The unique identifier (GUID) of the order being updated. Must match the ID inside the request body.</param>
         /// <param name="request">The order data transfer object containing the updated fields.</param>
@@ -117,13 +101,13 @@ namespace ProSpace.Api.Controllers
         /// <response code="400">The route ID does not match the body ID, or the input data failed validation rules.</response>
         /// <response code="401">The request lacks valid authentication credentials.</response>
         /// <response code="404">The order with the specified identifier was not found in the database.</response>
-        [HttpPut("{id:guid}")]
+        [HttpPut("admin/{id:guid}")]
         [Authorize(Roles = "manager, Manager")]
         [ProducesResponseType(typeof(BaseIdResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> Update(Guid id, [FromBody] UpdateOrderRequest request, CancellationToken ct)
+        public async Task<IActionResult> Update([FromRoute] Guid id, [FromBody] UpdateOrderRequest request, CancellationToken ct)
         {
             var targetOrder = new UpdateOrderDto
             {
@@ -149,7 +133,7 @@ namespace ProSpace.Api.Controllers
         [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+        public async Task<IActionResult> Delete([FromRoute] Guid id, CancellationToken ct)
             => ProcessResponse(await _service.DeleteAsync(id, ct));
 
         /// <summary>
@@ -166,7 +150,7 @@ namespace ProSpace.Api.Controllers
         [ProducesResponseType(typeof(BaseResponse<OrderDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> GetByNumber(int number, CancellationToken ct)
+        public async Task<IActionResult> GetByNumber([FromRoute] int number, CancellationToken ct)
             => ProcessResponse(await _service.GetByOrderNumberAsync(number, ct));
 
 
@@ -182,7 +166,7 @@ namespace ProSpace.Api.Controllers
         [Authorize]
         [ProducesResponseType(typeof(BaseResponse<OrderDto[]>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> GetByCustomerCode(string customerCode, CancellationToken ct)
+        public async Task<IActionResult> GetByCustomerCode([FromRoute] string customerCode, CancellationToken ct)
             => ProcessResponse(await _service.GetByOrdersCustomerCodeAsync(customerCode, ct));
 
         /// <summary>
@@ -197,7 +181,7 @@ namespace ProSpace.Api.Controllers
         [Authorize]
         [ProducesResponseType(typeof(BaseResponse<OrderDto[]>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> GetByCustomerId(Guid customerId, CancellationToken ct)
-            => ProcessResponse(await _service.GetByCustomersIdAsync(customerId, ct));
+        public async Task<IActionResult> GetByCustomerId([FromRoute] Guid customerId, CancellationToken ct)
+            => ProcessResponse(await _service.GetOrderByCustomersIdAsync(customerId, ct));
     }
 }

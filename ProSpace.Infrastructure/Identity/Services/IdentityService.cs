@@ -7,6 +7,7 @@ using ProSpace.Contracts.Contracts.Request;
 using ProSpace.Contracts.Contracts.Response;
 using ProSpace.Contracts.Responses;
 using ProSpace.Infrastructure.Entites.Users;
+using System.Collections;
 
 namespace ProSpace.Infrastructure.Identity.Services
 {
@@ -130,7 +131,6 @@ namespace ProSpace.Infrastructure.Identity.Services
             }
         }
 
-
         /// <inheritdoc/>
         public async Task<IList<string>> GetUserRolesAsync(string userId)
         {
@@ -240,5 +240,58 @@ namespace ProSpace.Infrastructure.Identity.Services
                 return BaseIdResponse.Failure("A critical identity manager crash occurred while executing the request account deletion sequence.");
             }
         }
+
+        /// <inheritdoc/>
+        public async Task<BaseIdResponse> BlockAccountAsync(Guid appUserId)
+        {
+            try
+            {
+                _logger.LogInformation("Attempting administrative lockout sequence for Identity User ID: {Id}", appUserId);
+
+                var user = await _userManager.FindByIdAsync(appUserId.ToString());
+                if (user == null)
+                {
+                    _logger.LogWarning("Lockout routine suspended. Identity User record with ID {Id} was not located.", appUserId);
+                    return BaseIdResponse.Failure($"Identity security account with ID {appUserId} not found.");
+                }
+
+                var setLockoutEnabledResult = await _userManager.SetLockoutEnabledAsync(user, true);
+                if (!setLockoutEnabledResult.Succeeded)
+                {
+                    _logger.LogError("Identity Provider failed to alter Lockout configuration state for user: {Id}", appUserId);
+
+                    var errorsList = new List<string>();
+                    foreach (var err in setLockoutEnabledResult.Errors)
+                        errorsList.Add($"{err.Code}: {err.Description}");
+
+                    return BaseIdResponse.Failure(errorsList);
+                }
+
+                var distantFutureOffset = new DateTimeOffset(2099, 12, 31, 23, 59, 59, TimeSpan.Zero);
+                var lockoutResult = await _userManager.SetLockoutEndDateAsync(user, distantFutureOffset);
+
+                if (!lockoutResult.Succeeded)
+                {
+                    _logger.LogError("Identity Provider rejected structural account lockout execution date payload for user: {Id}", appUserId);
+
+                    var errorsList = new List<string>();
+                    foreach (var err in lockoutResult.Errors)
+                        errorsList.Add($"{err.Code}: {err.Description}");
+
+                    return BaseIdResponse.Failure(errorsList);
+                }
+
+                await _userManager.UpdateSecurityStampAsync(user);
+
+                _logger.LogInformation("Administrative account lockout execution pipeline finalized successfully for user: {Id}", appUserId);
+                return BaseIdResponse.Success(appUserId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogCritical(ex, "A critical unhandled framework exception crashed the internal security account lockout routine for target: {Id}", appUserId);
+                return BaseIdResponse.Failure("An unexpected internal identity infrastructure exception occurred.");
+            }
+        }
+
     }
 }

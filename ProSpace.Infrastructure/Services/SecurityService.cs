@@ -2,12 +2,7 @@
 using Microsoft.Extensions.Logging;
 using ProSpace.Application.Interfaces.Repositories;
 using ProSpace.Application.Interfaces.Services;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Claims;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace ProSpace.Infrastructure.Services
 {
@@ -42,7 +37,7 @@ namespace ProSpace.Infrastructure.Services
         }
 
         /// <inheritdoc/>
-        public async Task<(bool IsSuccess, string Error)> ValidateOrderOwnershipAsync(Guid customerId)
+        public async Task<(bool IsSuccess, string Error)> ValidateCustomerAccessAsync(Guid customerId, CancellationToken ct = default)
         {
             var currentUser = _httpContextAccessor.HttpContext?.User;
 
@@ -54,23 +49,23 @@ namespace ProSpace.Infrastructure.Services
             if (!Guid.TryParse(nameIdentifierClaim, out var authenticatedUserId))
             {
                 _logger.LogError("Security system breakdown: Unable to resolve a valid Guid from user NameIdentifier claim context.");
-                return (false, "Access denied. Invalid user identity configuration parameters.");
+                return (false, "Access denied. Invalid user identity.");
             }
 
-            var customerProfile = await _unitOfWork.CustomersRepository.ReadAsync(customerId);
+            var customerProfile = await _unitOfWork.CustomersRepository.ReadAsync(customerId, ct);
 
             if (customerProfile == null)
             {
-                _logger.LogWarning("Access evaluation suspended. Parent Customer record {Id} was not located in database registers.", customerId);
-                return (false, "Associated customer account data profile was not found.");
+                _logger.LogWarning("Access evaluation suspended. Customer record {Id} not found.", customerId);
+                return (false, "Resource not found.");
             }
 
             if (authenticatedUserId != customerProfile.AppUserId)
             {
-                _logger.LogCritical("Security breach attempt blocked! Authenticated standard user {AuthId} tried to access data owned by Customer profile {CustomerId} (Owned by user: {OwnerId}).",
-                    authenticatedUserId, customerId, customerProfile.AppUserId);
+                _logger.LogCritical("Security breach attempt blocked! User {AuthId} tried to access data owned by Customer {CustomerId}.",
+                    authenticatedUserId, customerId);
 
-                return (false, "Access denied. You do not possess structural permissions to view or modify this resource.");
+                return (false, "Resource not found.");
             }
 
             return (true, string.Empty);
@@ -95,6 +90,15 @@ namespace ProSpace.Infrastructure.Services
             var customerProfile = await _unitOfWork.CustomersRepository.GetByAppUserIdAsync(authenticatedUserId, cancellationToken);
 
             return customerProfile?.Id;
+        }
+
+        /// <inheritdoc/>
+        public string? GetCurrentUserEmail()
+        {
+            var currentUser = _httpContextAccessor.HttpContext?.User;
+
+            return currentUser?.FindFirst(ClaimTypes.Email)?.Value
+                ?? currentUser?.FindFirst("email")?.Value;
         }
     }
 }

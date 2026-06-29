@@ -1,4 +1,4 @@
-﻿namespace ProSpace.Contracts.DTO
+﻿namespace ProSpace.Contracts.DTO.OrderItem
 {
     public class CreateOrderItemDto
     {

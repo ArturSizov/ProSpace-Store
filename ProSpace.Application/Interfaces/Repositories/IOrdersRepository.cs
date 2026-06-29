@@ -14,7 +14,7 @@ namespace ProSpace.Application.Interfaces.Repositories
         /// <param name="customerId">The unique global identifier (GUID) of the target customer profile account.</param>
         /// <param name="cancellationToken">An operational system token framework alerting for thread execution cancellation signals.</param>
         /// <returns>A collection sequence tracking all loaded order records matching the target customer identity parameters.</returns>
-        Task<IEnumerable<OrderModel>> GetByCustomerIdAsync(Guid customerId, CancellationToken cancellationToken = default);
+        Task<IEnumerable<OrderModel>> GetOrdersByCustomerIdAsync(Guid customerId, CancellationToken cancellationToken = default);
 
         Task<OrderModel?> GetOrderByCustomerIdAsync(Guid customerId, CancellationToken cancellationToken = default);
 

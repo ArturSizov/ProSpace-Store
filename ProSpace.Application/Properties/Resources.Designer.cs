@@ -61,6 +61,15 @@ namespace ProSpace.Application.Properties {
         }
         
         /// <summary>
+        ///   Ищет локализованную строку, похожую на Administrative price override cannot be a negative number.
+        /// </summary>
+        internal static string AdminPrice {
+            get {
+                return ResourceManager.GetString("AdminPrice", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Ищет локализованную строку, похожую на Buyer ID (Id) is required to update..
         /// </summary>
         internal static string BuyerIDRequiredToUpdate {
@@ -115,11 +124,56 @@ namespace ProSpace.Application.Properties {
         }
         
         /// <summary>
+        ///   Ищет локализованную строку, похожую на Price.
+        /// </summary>
+        internal static string ItemPrice {
+            get {
+                return ResourceManager.GetString("ItemPrice", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Ищет локализованную строку, похожую на Items count.
+        /// </summary>
+        internal static string ItemsCount {
+            get {
+                return ResourceManager.GetString("ItemsCount", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Ищет локализованную строку, похожую на Name.
+        /// </summary>
+        internal static string Name {
+            get {
+                return ResourceManager.GetString("Name", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Ищет локализованную строку, похожую на Password.
+        /// </summary>
+        internal static string Password {
+            get {
+                return ResourceManager.GetString("Password", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Ищет локализованную строку, похожую на Product code.
         /// </summary>
         internal static string ProductaCode {
             get {
                 return ResourceManager.GetString("ProductaCode", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Ищет локализованную строку, похожую на Standard customers are restricted from supplying custom pricing parameters.
+        /// </summary>
+        internal static string StandartCustomerPrice {
+            get {
+                return ResourceManager.GetString("StandartCustomerPrice", resourceCulture);
             }
         }
         

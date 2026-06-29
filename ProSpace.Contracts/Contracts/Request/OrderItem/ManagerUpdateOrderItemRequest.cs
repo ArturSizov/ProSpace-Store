@@ -1,9 +1,7 @@
-﻿namespace ProSpace.Contracts.DTO
+﻿namespace ProSpace.Contracts.Contracts.Request.OrderItem
 {
-    public class OrderItemDto
+    public class ManagerUpdateOrderItemRequest
     {
-        public Guid Id { get; set; }
-        public Guid OrderId { get; set; }
         public Guid ItemId { get; set; }
         public int ItemsCount { get; set; }
         public decimal ItemPrice { get; set; }

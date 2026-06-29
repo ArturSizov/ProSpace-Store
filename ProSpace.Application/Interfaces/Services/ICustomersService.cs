@@ -1,5 +1,5 @@
 ﻿using ProSpace.Api.Contracts.Request;
-using ProSpace.Contracts.DTO;
+using ProSpace.Contracts.DTO.Customer;
 using ProSpace.Contracts.Responses;
 
 namespace ProSpace.Application.Interfaces.Services

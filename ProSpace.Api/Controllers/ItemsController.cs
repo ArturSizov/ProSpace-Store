@@ -14,11 +14,6 @@ namespace ProSpace.Api.Controllers
     public class ItemsController : BaseApiController
     {
         /// <summary>
-        /// Logger
-        /// </summary>
-        private readonly ILogger<ItemsController> _logger;
-
-        /// <summary>
         /// Items service
         /// </summary>
         private readonly IItemsService _service;
@@ -26,11 +21,9 @@ namespace ProSpace.Api.Controllers
         /// <summary>
         /// Ctor
         /// </summary>
-        /// <param name="logger"></param>
         /// <param name="service"></param>
-        public ItemsController(ILogger<ItemsController> logger, IItemsService service)
+        public ItemsController(IItemsService service)
         {
-            _logger = logger;
             _service = service;
         }
 
@@ -43,7 +36,7 @@ namespace ProSpace.Api.Controllers
         /// <response code="200">The catalog item was validated and registered successfully.</response>
         /// <response code="400">The input fields failed structural layout rules or validation checks.</response>
         /// <response code="401">The request lacks valid authentication credentials.</response>
-        [HttpPost]
+        [HttpPost("admin")]
         [Authorize(Roles = "manager,Manager")]
         [ProducesResponseType(typeof(BaseIdResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status400BadRequest)]
@@ -70,13 +63,10 @@ namespace ProSpace.Api.Controllers
         /// <returns>A unified response wrapper containing the item metrics payload inside the Data field.</returns>
         /// <response code="200">The catalog item record was successfully located and fetched.</response>
         /// <response code="404">No item record matches the provided unique identifier.</response>
-        /// <response code="401">The request lacks valid authentication credentials.</response>
         [HttpGet("{id:guid}")]
-        [Authorize]
         [ProducesResponseType(typeof(BaseResponse<ItemDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
-        [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
+        public async Task<IActionResult> GetById([FromRoute] Guid id, CancellationToken ct)
             => ProcessResponse(await _service.ReadAsync(id, ct));
 
         /// <summary>
@@ -101,13 +91,13 @@ namespace ProSpace.Api.Controllers
         /// <response code="400">The boundary path ID does not align with the object inner ID, or data rules failed.</response>
         /// <response code="401">The request lacks valid authentication credentials.</response>
         /// <response code="404">The catalog item matching the requested identifier cannot be found.</response>
-        [HttpPut("{id:guid}")]
+        [HttpPut("admin/{id:guid}")]
         [Authorize(Roles = "manager,Manager")]
         [ProducesResponseType(typeof(BaseIdResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> Update(Guid id, [FromBody] ItemRequest request, CancellationToken ct)
+        public async Task<IActionResult> Update([FromRoute] Guid id, [FromBody] ItemRequest request, CancellationToken ct)
         {
             var targetItem = new ItemDto
             {
@@ -130,12 +120,12 @@ namespace ProSpace.Api.Controllers
         /// <response code="200">The product record was purged completely from the data storage layers.</response>
         /// <response code="401">The request lacks valid authentication credentials.</response>
         /// <response code="404">No item record matches the provided identifier to perform deletion logic.</response>
-        [HttpDelete("{id:guid}")]
+        [HttpDelete("admin/{id:guid}")]
         [Authorize(Roles = "manager,Manager")]
         [ProducesResponseType(typeof(BaseIdResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(typeof(BaseResponse), StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+        public async Task<IActionResult> Delete([FromRoute] Guid id, CancellationToken ct)
             => ProcessResponse(await _service.DeleteAsync(id, ct));
     }
 }

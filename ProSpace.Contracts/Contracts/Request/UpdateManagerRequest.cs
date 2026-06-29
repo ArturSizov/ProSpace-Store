@@ -1,8 +1,7 @@
-﻿namespace ProSpace.Contracts.DTO
+﻿namespace ProSpace.Api.Contracts.Request
 {
-    public class CustomerDto
+    public class UpdateManagerRequest
     {
-        public Guid Id { get; set; }
         public string Name { get; set; } = null!;
         public string Code { get; set; } = null!;
         public string? Address { get; set; }

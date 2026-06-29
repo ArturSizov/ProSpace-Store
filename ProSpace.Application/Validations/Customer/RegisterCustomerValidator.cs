@@ -1,14 +1,11 @@
 ﻿using FluentValidation;
 using ProSpace.Application.Properties;
-using ProSpace.Contracts.DTO;
-using System.Text.RegularExpressions;
+using ProSpace.Contracts.DTO.Customer;
 
-namespace ProSpace.Application.Validations
+namespace ProSpace.Application.Validations.Customer
 {
     public class RegisterCustomerValidator : AbstractValidator<RegisterCustomerDto>
     {
-        private static readonly Regex _regex = new(@"^\d{4}-\d{4}$");
-
         public RegisterCustomerValidator()
         {
             RuleFor(x => x.Email)
@@ -16,18 +13,15 @@ namespace ProSpace.Application.Validations
 
             RuleFor(x => x.Password)
                 .NotEmpty()
+                .WithName(Resources.Password)
                 .MinimumLength(6)
                 .MaximumLength(100);
 
             RuleFor(x => x.UserName)
                 .NotEmpty()
+                .WithName(Resources.Name)
+                .MinimumLength(2)
                 .MaximumLength(100);
-
-            RuleFor(i => i.UserCode)
-                 .NotEmpty()
-                 .WithName(Resources.UserCode)
-                 .Matches(_regex)
-                 .WithFormat(Resources.CodeFormatError, "2222-2222");
 
             RuleFor(x => x.Discount)
                 .GreaterThanOrEqualTo(0)

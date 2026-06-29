@@ -76,7 +76,6 @@ namespace ProSpace.Application.Services
             }
         }
 
-
         /// <inheritdoc/>
         public async Task<BaseIdResponse> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
         {
